@@ -1,0 +1,16 @@
+[package]
+name = "rustdbg"
+version = "0.1.0"
+authors = ["Nick Mavis <itsnick@gmail.com>"]
+
+[dependencies]
+libc = "0.2.62"
+nix = "0.15.0"
+
+[lib]
+name = "rustdbg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "twelve"
+path = "tests/rust/twelve.rs"
