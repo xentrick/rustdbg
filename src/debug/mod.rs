@@ -7,6 +7,7 @@ use nix::sys::ptrace;
 use nix::sys::wait::*;
 use nix::sys::signal;
 use nix::Error;
+use nix::errno::Errno;
 use inferior::*;
 
 
@@ -14,38 +15,39 @@ pub struct Debuggee {
     file: str,
 }
 
-
-// Better named as load()
+// Better named as load()?
 pub fn start(file: &Path, args: &[&str]) {
     println!("Executing Debuggee: {}", file.display());
 
     // Fork and Verify Result
-    match fork() {
-        Ok(ForkResult::Child) => trace_child(file, args),
-        Ok(ForkResult::Parent { child }) => {
-            println!("Fork result was a parent");
-            attach(child);
+        match fork() {
+            Ok(ForkResult::Child) => trace_child(file, args),
+            Ok(ForkResult::Parent { child }) => {
+                attach(child);
+            }
+            Err(Error::Sys(Errno::EAGAIN)) => println!("Sys AGAIN error"),
+            Err(e) => {
+                println!("Fork failed: {}", e);
+                return ()
+            }
         }
-        Err(_) => println!("Fork failed"),
-    }
 
 }
 
-pub fn attach(child: Pid) {
-    println!("Attaching to PID");
+pub fn attach(child: Pid) -> Result<Inferior, Error> {
+    println!("Fork result was a parent");
+    println!("Attaching to PID: {}", child);
     match waitpid(child, None) {
         Ok(WaitStatus::Stopped(child, signal::SIGTRAP)) => {
-            println!("IT WORKED!");
+            println!("Process STOPPED on first instruction.");
+            return Ok(Inferior { pid: child, state: InferiorState::Running })
         }
-        Ok(WaitStatus::PtraceEvent(child, signal::SIGTRAP, 0)) => println!("IT WORKED!"),
+        Ok(WaitStatus::PtraceEvent(child, signal::SIGTRAP, 0)) => println!("SIGTRAP ENCOUNTERED"),
         Ok(_) => panic!("Unexpected stop in attach_inferior"),
         Err(e) => panic!("Error: {}", e)
     }
 
 }
-
-
-
 
 pub fn trace_child(file: &Path, args: &[&str]) -> () {
     println!("Fork resulted in child. Running execve()");
@@ -65,6 +67,10 @@ pub fn trace_child(file: &Path, args: &[&str]) -> () {
     // Begin Tracing parent
     ptrace::traceme().expect("Unable to set PTRACE_TRACEME");
     // Execute with arguments
-    //execve(cfile, &[], &[]).expect("Failed to run execve()");
     execve(cfile, &[], &[]).expect("Failed to run execve()");
+    // match execve(cfile, &[], &[]) {
+    //     Ok(t) => println!("Exec okay"),
+    //     Err(e) => println!("Error: {}", e)
+    // }
+    unreachable!()
 }
