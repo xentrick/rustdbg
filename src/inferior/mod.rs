@@ -74,16 +74,16 @@ pub struct Reason {
 #[derive(Copy, Clone)]
 pub struct Inferior {
     /* Process Information */
-    main_pid: Option<Pid>,
-    pid: Option<Pid>,
-    tid: Option<Pid>,
-    forked_pid: Option<Pid>,
+    //main_pid: Option<Pid>,
+    pub pid: Option<Pid>,
+    //tid: Option<Pid>,
+    //forked_pid: Option<Pid>,
 
     /* Process State */
-    state: InferiorState,
+    pub state: InferiorState,
 
-    steps: u32,
-    reason: Reason,
-    recoil_mode: RecoilMode,
-    stopaddr: u64,
+    //steps: u32,
+    //reason: Reason,
+    //recoil_mode: RecoilMode,
+    //stopaddr: u64,
 }

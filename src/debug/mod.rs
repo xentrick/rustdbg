@@ -15,23 +15,49 @@ pub struct Debuggee {
     file: str,
 }
 
+pub fn continue_exec(proc: &mut Inferior) -> i32 {
+    /* Continue with no signal */
+    ptrace::cont(proc.pid.unwrap(), None)
+        .ok()
+        .expect("Failed to continue inferior execution.");
+    loop {
+        proc.state = match waitpid(proc.pid, None) {
+            Ok(WaitStatus::Exited(_pid, code)) => return code,
+            Ok(WaitStatus::Stopped(_pid, signal::SIGTRAP)) => {
+                println!("Implement breakpoint handling.");
+                InferiorState::Stopped
+            },
+            Ok(WaitStatus::Stopped(_pid, signal)) => {
+                panic!("Unexpected stop on signal {} when continuing execution. State: {}", signal, proc.state as i32)
+            }
+            Ok(_) => panic!("Unspexted stop in continue."),
+            Err(_) => panic!("Unhandled error in continue.")
+        };
+    }
+    println!("Inferior State: {}", proc.state as i32);
+}
+
 // Better named as load()?
-pub fn start(file: &Path, args: &[&str]) {
+pub fn start(file: &Path, args: &[&str]) -> Result<Inferior, Error> {
     println!("Executing Debuggee: {}", file.display());
 
-    // Fork and Verify Result
-        match fork() {
-            Ok(ForkResult::Child) => trace_child(file, args),
-            Ok(ForkResult::Parent { child }) => {
-                attach(child);
-            }
-            Err(Error::Sys(Errno::EAGAIN)) => println!("Sys AGAIN error"),
-            Err(e) => {
-                println!("Fork failed: {}", e);
-                return ()
-            }
-        }
+    let mut session = Inferior{ pid: None, state: InferiorState::Stopped };
 
+    // Fork and Verify Result
+    match fork() {
+        Ok(ForkResult::Child) => trace_child(file, args),
+        Ok(ForkResult::Parent { child }) => {
+            // Implement error handling in Inferior struct. Use `?`
+            session = attach(child).expect("Got inferior!");
+        }
+        Err(Error::Sys(Errno::EAGAIN)) => println!("Sys AGAIN error"),
+        Err(e) => {
+            println!("Fork failed: {}", e);
+            return Err(e)
+        }
+    }
+
+    Ok(session)
 }
 
 pub fn attach(child: Pid) -> Result<Inferior, Error> {
@@ -40,9 +66,12 @@ pub fn attach(child: Pid) -> Result<Inferior, Error> {
     match waitpid(child, None) {
         Ok(WaitStatus::Stopped(child, signal::SIGTRAP)) => {
             println!("Process STOPPED on first instruction.");
-            return Ok(Inferior { pid: child, state: InferiorState::Running })
+            return Ok(Inferior { pid: Some(child), state: InferiorState::Running })
         }
-        Ok(WaitStatus::PtraceEvent(child, signal::SIGTRAP, 0)) => println!("SIGTRAP ENCOUNTERED"),
+        Ok(WaitStatus::PtraceEvent(child, signal::SIGTRAP, 0)) => {
+            println!("SIGTRAP ENCOUNTERED");
+            return Ok(Inferior { pid: Some(child), state: InferiorState::Running })
+        }
         Ok(_) => panic!("Unexpected stop in attach_inferior"),
         Err(e) => panic!("Error: {}", e)
     }
