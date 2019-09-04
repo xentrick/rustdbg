@@ -9,15 +9,24 @@ use nix::sys::signal;
 use nix::Error;
 use nix::errno::Errno;
 use inferior::*;
+use libc::c_long;
 
+pub mod breakpoint;
 
 pub struct Debuggee {
     file: str,
 }
 
+pub fn peek(pid: Pid, addr: InferiorPointer) -> i64 {
+    ptrace::read(pid, addr.as_voidptr())
+        .ok()
+        .expect("Unable to read from address")
+}
+
 pub fn continue_exec(proc: &mut Inferior) -> i32 {
     /* Continue with no signal */
-    ptrace::cont(proc.pid.unwrap(), None)
+    println!("Continuing execution of inferior.");
+    ptrace::cont(proc.pid, None)
         .ok()
         .expect("Failed to continue inferior execution.");
     loop {
@@ -41,7 +50,7 @@ pub fn continue_exec(proc: &mut Inferior) -> i32 {
 pub fn start(file: &Path, args: &[&str]) -> Result<Inferior, Error> {
     println!("Executing Debuggee: {}", file.display());
 
-    let mut session = Inferior{ pid: None, state: InferiorState::Stopped };
+    let mut session = Inferior{ pid: Pid::this(), state: InferiorState::Stopped };
 
     // Fork and Verify Result
     match fork() {
@@ -66,11 +75,11 @@ pub fn attach(child: Pid) -> Result<Inferior, Error> {
     match waitpid(child, None) {
         Ok(WaitStatus::Stopped(child, signal::SIGTRAP)) => {
             println!("Process STOPPED on first instruction.");
-            return Ok(Inferior { pid: Some(child), state: InferiorState::Running })
+            return Ok(Inferior { pid: child, state: InferiorState::Running })
         }
         Ok(WaitStatus::PtraceEvent(child, signal::SIGTRAP, 0)) => {
             println!("SIGTRAP ENCOUNTERED");
-            return Ok(Inferior { pid: Some(child), state: InferiorState::Running })
+            return Ok(Inferior { pid: child, state: InferiorState::Running })
         }
         Ok(_) => panic!("Unexpected stop in attach_inferior"),
         Err(e) => panic!("Error: {}", e)
@@ -94,7 +103,10 @@ pub fn trace_child(file: &Path, args: &[&str]) -> () {
     // }
 
     // Begin Tracing parent
-    ptrace::traceme().expect("Unable to set PTRACE_TRACEME");
+    ptrace::traceme()
+        .ok()
+        .expect("Unable to set PTRACE_TRACEME");
+
     // Execute with arguments
     execve(cfile, &[], &[]).expect("Failed to run execve()");
     // match execve(cfile, &[], &[]) {
