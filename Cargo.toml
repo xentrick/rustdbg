@@ -8,6 +8,7 @@ default-run = "rdbg"
 libc = "0.2.62"
 nix = "0.15.0"
 byteorder = "1.3.2"
+linefeed = "0.6.0"
 
 [lib]
 name = "rustdbg"

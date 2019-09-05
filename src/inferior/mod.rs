@@ -87,7 +87,7 @@ pub enum ReasonType {
     ReasonDivbyzero,
     ReasonIllegal,
     ReasonUnknown,
-    ReasonError,
+    ReasonErrork,
     ReasonNewPid,
     ReasonNewTid,
     ReasonNewLib,
