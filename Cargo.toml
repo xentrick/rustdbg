@@ -1,15 +1,21 @@
 [package]
 name = "rustdbg"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Nick Mavis <itsnick@gmail.com>"]
+default-run = "rdbg"
 
 [dependencies]
 libc = "0.2.62"
 nix = "0.15.0"
+byteorder = "1.3.2"
 
 [lib]
 name = "rustdbg"
 path = "src/lib.rs"
+
+[[bin]]
+name = "rdbg"
+path = "src/bin.rs"
 
 [[bin]]
 name = "twelve"

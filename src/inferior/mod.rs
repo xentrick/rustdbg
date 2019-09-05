@@ -3,6 +3,7 @@
 use nix::unistd::Pid;
 use libc::c_void;
 use std::ops::{Add, Sub};
+use std::fmt;
 
 /* Enums */
 
@@ -12,6 +13,13 @@ impl InferiorPointer {
     pub fn as_voidptr(&self) -> * mut c_void {
         let &InferiorPointer(u) = self;
         u as * mut c_void
+    }
+}
+
+impl fmt::LowerHex for InferiorPointer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let val = self.0;
+        write!(f, "{:#x}", val)
     }
 }
 

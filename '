@@ -144,3 +144,15 @@ PTRACE_SETREGS
 
 
 
+# GDB
+
+## Startup
+
+1. `gdb_main`
+- `gdb_init`
+- `initialize_all_files`
+- `_initialize_arch_tdep`
+- `_initialize_arch_remote`
+- `initialize_current_architecture`
+- `arch_gdbarch_init`
+- `current_interp_command_loop`

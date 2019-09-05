@@ -8,19 +8,39 @@ use nix::sys::wait::*;
 use nix::sys::signal;
 use nix::Error;
 use nix::errno::Errno;
-use inferior::*;
 use libc::c_long;
 
 pub mod breakpoint;
+use inferior::*;
+
+mod ffi {
+    use libc::{c_int, c_long};
+
+    extern {
+        pub fn personality(persona: c_long) -> c_int;
+    }
+}
+
+fn disable_aslr() -> () {
+    unsafe {
+        let old = ffi::personality(0xffffffff);
+        ffi::personality((old | 0x0040000) as i64);
+    }
+}
 
 pub struct Debuggee {
     file: str,
 }
 
 pub fn peek(pid: Pid, addr: InferiorPointer) -> i64 {
-    ptrace::read(pid, addr.as_voidptr())
-        .ok()
-        .expect("Unable to read from address")
+    println!("[{}] Peeking WORD at {:#x}", pid, addr);
+//     ptrace::read(pid, addr.as_voidptr())
+//         .ok()
+//         .expect("Unable to read from address")
+    match ptrace::read(pid, addr.as_voidptr()) {
+        Ok(t) => return t,
+        Err(e) => panic!("Error: {}", e),
+    }
 }
 
 pub fn continue_exec(proc: &mut Inferior) -> i32 {
@@ -31,7 +51,10 @@ pub fn continue_exec(proc: &mut Inferior) -> i32 {
         .expect("Failed to continue inferior execution.");
     loop {
         proc.state = match waitpid(proc.pid, None) {
-            Ok(WaitStatus::Exited(_pid, code)) => return code,
+            Ok(WaitStatus::Exited(_pid, code)) => {
+                println!("Process exited: {}", code);
+                return code
+            },
             Ok(WaitStatus::Stopped(_pid, signal::SIGTRAP)) => {
                 println!("Implement breakpoint handling.");
                 InferiorState::Stopped
@@ -75,6 +98,7 @@ pub fn attach(child: Pid) -> Result<Inferior, Error> {
     match waitpid(child, None) {
         Ok(WaitStatus::Stopped(child, signal::SIGTRAP)) => {
             println!("Process STOPPED on first instruction.");
+            //loop {}
             return Ok(Inferior { pid: child, state: InferiorState::Running })
         }
         Ok(WaitStatus::PtraceEvent(child, signal::SIGTRAP, 0)) => {
@@ -90,10 +114,8 @@ pub fn attach(child: Pid) -> Result<Inferior, Error> {
 pub fn trace_child(file: &Path, args: &[&str]) -> () {
     println!("Fork resulted in child. Running execve()");
     // Convert `Path` to `CString`
-    let cfile = &CString::new(
-        file.to_str()
-            .unwrap()
-    ).expect("Failed to convert file path to CString");
+    let cfile = &CString::new(file.to_str().unwrap())
+        .expect("Failed to convert file path to CString");
 
     /* We need to add arg support */
     //let cargs: &[CString] = args.map(|&a| a as CString);
@@ -102,12 +124,17 @@ pub fn trace_child(file: &Path, args: &[&str]) -> () {
     //     cargs.append(CString::new(a.as_bytes()));
     // }
 
-    // Begin Tracing parent
+    // For now don't deal with ASLR (CHANGE LATER)
+    disable_aslr();
+
+    // Begin Tracing
+    println!("Running traceme()");
     ptrace::traceme()
         .ok()
         .expect("Unable to set PTRACE_TRACEME");
 
     // Execute with arguments
+    println!("execve(\"{}\")", file.display());
     execve(cfile, &[], &[]).expect("Failed to run execve()");
     // match execve(cfile, &[], &[]) {
     //     Ok(t) => println!("Exec okay"),
