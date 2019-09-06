@@ -11,4 +11,6 @@ pub static RDBG_COMMANDS: &[(&str, &str)] = &[
     ("hexdump", "Dump Hex"),
     ("registers", "Show register information for inferior"),
     ("symbols", "Show symbols for inferior"),
+    ("disas", "Disassemble a function"),
+    ("pcode", "Show pcode for a function"),
 ];

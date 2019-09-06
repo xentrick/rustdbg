@@ -11,7 +11,7 @@ use std::time::Duration;
 use std::path::Path;
 
 use self::commands::*;
-use self::completer::*;
+use self::completer::DbgCompleter;
 use debug;
 
 const HISTORY_FILE: &str = ".rdbg_history";
@@ -22,6 +22,7 @@ pub fn main() -> io::Result<()> {
     println!("Initializing rustdbg debugger. Written by xentrick");
 
     let interface = Arc::new(Interface::new("rustdbg")?);
+    interface.set_completer(Arc::new(DbgCompleter));
     interface.set_prompt("rdbg> ")?;
 
     if let Err(e) = interface.load_history(HISTORY_FILE) {
@@ -40,10 +41,13 @@ pub fn main() -> io::Result<()> {
 
         match cmd {
             "run" => {
-                let mut inf = debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/elf/hello_world"), &[]).unwrap();
+                let inf = debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/elf/hello_world"), &[]).unwrap();
                 debug::breakpoint::set_bp(inf, 0x55555555513d);
-                debug::continue_exec(&mut inf);
+                debug::continue_exec(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
+            }
+            "break" => {
+                println!("Breakpoints are currently being implemented!");
             }
             "help" => {
                 println!("rustdbg commands:\n");

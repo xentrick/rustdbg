@@ -34,16 +34,16 @@ pub struct Debuggee {
 
 pub fn peek(pid: Pid, addr: InferiorPointer) -> i64 {
     println!("[{}] Peeking WORD at {:#x}", pid, addr);
-//     ptrace::read(pid, addr.as_voidptr())
-//         .ok()
-//         .expect("Unable to read from address")
-    match ptrace::read(pid, addr.as_voidptr()) {
-        Ok(t) => return t,
-        Err(e) => panic!("Error: {}", e),
-    }
+    ptrace::read(pid, addr.as_voidptr())
+        .ok()
+        .expect("Unable to read from address")
+    // match ptrace::read(pid, addr.as_voidptr()) {
+    //     Ok(t) => return t,
+    //     Err(e) => panic!("Error: {}", e),
+    // }
 }
 
-pub fn continue_exec(proc: &mut Inferior) -> i32 {
+pub fn continue_exec(mut proc: Inferior) -> i32 {
     /* Continue with no signal */
     println!("Continuing execution of inferior.");
     ptrace::cont(proc.pid, None)
@@ -67,13 +67,14 @@ pub fn continue_exec(proc: &mut Inferior) -> i32 {
         };
     }
     println!("Inferior State: {}", proc.state as i32);
+    println!("Attached: {}", proc.attached);
 }
 
 // Better named as load()?
 pub fn start(file: &Path, args: &[&str]) -> Result<Inferior, Error> {
     println!("Executing Debuggee: {}", file.display());
 
-    let mut session = Inferior{ pid: Pid::this(), state: InferiorState::Stopped };
+    let mut session = Inferior::default();
 
     // Fork and Verify Result
     match fork() {
@@ -95,15 +96,29 @@ pub fn start(file: &Path, args: &[&str]) -> Result<Inferior, Error> {
 pub fn attach(child: Pid) -> Result<Inferior, Error> {
     println!("Fork result was a parent");
     println!("Attaching to PID: {}", child);
+    /*
+    * GDB adds a main thread. If target extends ptrace
+    * target, it should decorate `ptid` later. inf-ptrace.c
+    */
     match waitpid(child, None) {
         Ok(WaitStatus::Stopped(child, signal::SIGTRAP)) => {
             println!("Process STOPPED on first instruction.");
             //loop {}
-            return Ok(Inferior { pid: child, state: InferiorState::Running })
+            return Ok(Inferior {
+                pid: child,
+                state: InferiorState::Running,
+                attached: true,
+                ..Inferior::default()
+            })
         }
         Ok(WaitStatus::PtraceEvent(child, signal::SIGTRAP, 0)) => {
             println!("SIGTRAP ENCOUNTERED");
-            return Ok(Inferior { pid: child, state: InferiorState::Running })
+            return Ok(Inferior {
+                pid: child,
+                state: InferiorState::Running,
+                attached: true,
+                ..Inferior::default()
+            })
         }
         Ok(_) => panic!("Unexpected stop in attach_inferior"),
         Err(e) => panic!("Error: {}", e)

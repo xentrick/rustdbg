@@ -7,7 +7,7 @@ use linefeed::Prompter;
 use interactive::commands::RDBG_COMMANDS;
 
 
-struct DbgCompleter;
+pub struct DbgCompleter;
 
 impl<Term: Terminal> Completer<Term> for DbgCompleter {
     fn complete(&self, word: &str, prompter: &Prompter<Term>,
