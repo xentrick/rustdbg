@@ -28,6 +28,22 @@ A process debugger written in Rust.
 - Inferior Process structure for knowledgea bout the process
 - general cmd line debug functions
 
+## To Implement
+
+- [ ] Breakpoint
+ - [ ] Software
+ - [ ] Hardware
+- [ ] Symbols
+  - [ ] Source Code
+- [ ] Directive for registers
+  - [ ] Set breakpoint with register `break $eip`
+- [ ] Display Layout
+  - [ ] Memory View
+  - [ ] Disassembly
+  - [ ] Registers
+  - [ ] Stack
+  - [ ] Source Code
+
 
 # Execution Flow
 

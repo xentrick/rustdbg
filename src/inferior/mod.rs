@@ -4,6 +4,7 @@ use nix::unistd::Pid;
 use libc::c_void;
 use std::ops::{Add, Sub};
 use std::fmt;
+use std::rc::Rc;
 use std::cell::RefCell;
 
 /* Enums */
@@ -151,7 +152,7 @@ pub struct Inferior {
     pub state: InferiorState,
     //pub mem: MemoryMap,
 
-    pub bpmap: Vec<Breakpoint>,
+    pub bpmap: Vec<Box<Breakpoint>>,
     /* List of breakpoints */
 
     //steps: u32,

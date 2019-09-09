@@ -8,7 +8,7 @@ use nix::sys::wait::*;
 use nix::sys::signal;
 use nix::Error;
 use nix::errno::Errno;
-use libc::c_long;
+use libc::{c_long, c_void};
 
 pub mod breakpoint;
 use inferior::*;
@@ -32,15 +32,15 @@ pub struct Debuggee {
     file: str,
 }
 
-pub fn peek(pid: Pid, addr: InferiorPointer) -> i64 {
+pub fn write(pid: Pid, addr: InferiorPointer, data: i64) -> () {
+    ptrace::write(pid, addr.as_voidptr(), data as * mut c_void)
+        .ok()
+        .expect("Failed to write data to inferior");
+}
+
+pub fn peek(pid: Pid, addr: InferiorPointer) -> Result<i64, Error> {
     println!("[{}] Peeking WORD at {:#x}", pid, addr);
     ptrace::read(pid, addr.as_voidptr())
-        .ok()
-        .expect("Unable to read from address")
-    // match ptrace::read(pid, addr.as_voidptr()) {
-    //     Ok(t) => return t,
-    //     Err(e) => panic!("Error: {}", e),
-    // }
 }
 
 pub fn continue_exec(mut proc: Inferior) -> i32 {

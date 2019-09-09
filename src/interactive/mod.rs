@@ -9,9 +9,12 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::path::Path;
+use std::u64;
+use ansi_term::Color;
 
 use self::commands::*;
 use self::completer::DbgCompleter;
+use inferior::Inferior;
 use debug;
 
 const HISTORY_FILE: &str = ".rdbg_history";
@@ -23,7 +26,13 @@ pub fn main() -> io::Result<()> {
 
     let interface = Arc::new(Interface::new("rustdbg")?);
     interface.set_completer(Arc::new(DbgCompleter));
-    interface.set_prompt("rdbg> ")?;
+
+    let green = Color::Green.bold();
+
+    interface.set_prompt(&format!("\x01{prefix}\x02{text}\x01{suffix}\x02",
+             prefix=green.prefix(),
+             text="rdbg>",
+             suffix=green.suffix()))?;
 
     if let Err(e) = interface.load_history(HISTORY_FILE) {
         if e.kind() == io::ErrorKind::NotFound {
@@ -32,6 +41,9 @@ pub fn main() -> io::Result<()> {
             eprintln!("Could not load history file {}: {}", HISTORY_FILE, e);
         }
     }
+
+    static mut inf: Inferior = Inferior::default();
+
     while let ReadResult::Input(line) = interface.read_line()? {
         if !line.trim().is_empty() {
             interface.add_history_unique(line.clone());
@@ -41,13 +53,25 @@ pub fn main() -> io::Result<()> {
 
         match cmd {
             "run" => {
-                let inf = debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/elf/hello_world"), &[]).unwrap();
-                debug::breakpoint::set_bp(inf, 0x55555555513d);
+                inf = debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/elf/hello_world"), &[]).unwrap();
+                debug::breakpoint::set(inf.pid, 0x55555555513d);
                 debug::continue_exec(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
             }
             "break" => {
-                println!("Breakpoints are currently being implemented!");
+                let iargs = args.split_ascii_whitespace();
+                for a in iargs {
+                    let hexstr = hex::decode(a).expect("Unable to parse hex string.");
+                    if hexstr.len() > 8 {
+                        println!("Hex string longer than u64");
+                        continue
+                    }
+                    println!("Arg: {}", a);
+                    let hex64 = u64::from_be_bytes(hexstr);
+                    //let hex64 = u64::from_be_bytes(hexstr.as_slice());
+                    debug::breakpoint::set(inf.pid, hex64);
+                }
+                //debug::breakpoint::set(inf.pid, hexaddr);
             }
             "help" => {
                 println!("rustdbg commands:\n");
@@ -89,6 +113,7 @@ pub fn main() -> io::Result<()> {
         }
     }
 
+    interface.save_history(HISTORY_FILE)?;
     println!("Goodbye.");
 
     Ok(())
