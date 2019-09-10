@@ -204,6 +204,7 @@ impl<'a> Default for Inferior {
 
 /* Inferior Implementation */
 impl<'a> Inferior {
+
     /* Start new process */
     pub fn start(file: String, args: &[String]) -> Inferior {
         println!("Executing: {}", file);
@@ -211,12 +212,13 @@ impl<'a> Inferior {
         let inf: Inferior;
 
         match fork() {
-            Ok(ForkResult::Child) => Inferior::attach_self(file, args),
-            Ok(ForkResult::Parent { child}) => return Inferior::attach_child(child),
+            Ok(ForkResult::Child) => return Inferior::attach_self(file, args),
+            Ok(ForkResult::Parent { child }) => {
+                inf.pid = child;
+                return Inferior::wait()
+            }
             Err(e) => panic!("Fork failed: {}", e),
         }
-
-
     }
 
     /* Attach to a PID */
@@ -232,7 +234,6 @@ impl<'a> Inferior {
         inf.location = file;
 
         let cmd = CString::new(inf.location).unwrap();
-        let cmd_ptr = cmd.clone().into_raw();
 
         // *** Implement args and environment ***
         //let args: = &[];
@@ -262,9 +263,9 @@ impl<'a> Inferior {
 
     }
 
-    pub fn attach_child(pid: Pid) -> Inferior {
+    pub fn wait(&mut self) -> Inferior {
         /* Call waitpid to get a status */
-        match waitpid(pid, None) {
+        match waitpid(self.pid, None) {
             Ok(WaitStatus::Stopped(pid, signal::SIGTRAP)) => {
                 println!("Process STOP encountered.");
                 return Inferior { pid: pid, state: InferiorState::Running, attached: true, ..Inferior::default() }
@@ -276,6 +277,14 @@ impl<'a> Inferior {
             Ok(_) => panic!("Unhandled event in waitpid. Implement feature."),
             Err(e) => panic!("Error: {}", e)
         }
+    }
+
+    pub fn r#continue(&mut self) {
+        println!("Continuing execution...");
+        ptrace::cont(self.pid, None)
+            .ok()
+            .expect("Failed to continue process execution.");
+        Inferior::wait()
     }
 
 }
