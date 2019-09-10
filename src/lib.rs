@@ -7,5 +7,5 @@ extern crate hex;
 extern crate bytevec;
 
 pub mod inferior;
-pub mod debug;
+//pub mod debug;
 pub mod interactive;

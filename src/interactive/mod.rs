@@ -15,7 +15,6 @@ use ansi_term::Color;
 use self::commands::*;
 use self::completer::DbgCompleter;
 use inferior::Inferior;
-use debug;
 
 const HISTORY_FILE: &str = ".rdbg_history";
 
@@ -42,7 +41,7 @@ pub fn main() -> io::Result<()> {
         }
     }
 
-    static mut inf: Inferior = Inferior::default();
+    let mut inf: Inferior = Inferior::default();
 
     while let ReadResult::Input(line) = interface.read_line()? {
         if !line.trim().is_empty() {
@@ -52,25 +51,29 @@ pub fn main() -> io::Result<()> {
         let (cmd, args) = split_first_word(&line);
 
         match cmd {
-            "run" => {
-                inf = debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/elf/hello_world"), &[]).unwrap();
-                debug::breakpoint::set(inf.pid, 0x55555555513d);
-                debug::continue_exec(inf);
+            "test" => {
+                let cmd = String::from("/home/nmavis/dev/rustdbg/tests/elf/hello_world");
+                let args = &[];
+                inf = Inferior::start(cmd, args);
+                //Inferior::breakpoint::set(inf.pid, 0x55555555513d);
+                //debug::continue_exec(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
             }
+            "run" => println!("Implement normal run"),
             "break" => {
-                let iargs = args.split_ascii_whitespace();
-                for a in iargs {
-                    let hexstr = hex::decode(a).expect("Unable to parse hex string.");
-                    if hexstr.len() > 8 {
-                        println!("Hex string longer than u64");
-                        continue
-                    }
-                    println!("Arg: {}", a);
-                    let hex64 = u64::from_be_bytes(hexstr);
+                println!("Revisit this...");
+                // let iargs = args.split_ascii_whitespace();
+                // for a in iargs {
+                //     let hexstr = hex::decode(a).expect("Unable to parse hex string.");
+                //     if hexstr.len() > 8 {
+                //         println!("Hex string longer than u64");
+                //         continue
+                //     }
+                //     println!("Arg: {}", a);
+                //     let hex64 = u64::from_be_bytes(hexstr);
                     //let hex64 = u64::from_be_bytes(hexstr.as_slice());
-                    debug::breakpoint::set(inf.pid, hex64);
-                }
+                    //debug::breakpoint::set(inf.pid, hex64);
+                // }
                 //debug::breakpoint::set(inf.pid, hexaddr);
             }
             "help" => {
