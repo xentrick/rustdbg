@@ -6,15 +6,17 @@ use linefeed::command::COMMANDS;
 use linefeed::inputrc::parse_text;
 use std::io;
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
-use std::path::Path;
-use std::u64;
+//use std::thread;
+//use std::time::Duration;
+//use std::path::Path;
+//use std::u64;
 use ansi_term::Color;
 
 use self::commands::*;
 use self::completer::DbgCompleter;
 use inferior::Inferior;
+
+use std::unimplemented;
 
 const HISTORY_FILE: &str = ".rdbg_history";
 
@@ -30,7 +32,7 @@ pub fn main() -> io::Result<()> {
 
     interface.set_prompt(&format!("\x01{prefix}\x02{text}\x01{suffix}\x02",
              prefix=green.prefix(),
-             text="rdbg>",
+             text="rdbg> ",
              suffix=green.suffix()))?;
 
     if let Err(e) = interface.load_history(HISTORY_FILE) {
@@ -49,19 +51,23 @@ pub fn main() -> io::Result<()> {
         }
 
         let (cmd, args) = split_first_word(&line);
+        let debug_target = String::from("/home/nmavis/dev/rustdbg/tests/elf/hello_world");
+        let debug_args = &[];
 
         match cmd {
             "test" => {
-                let cmd = String::from("/home/nmavis/dev/rustdbg/tests/elf/hello_world");
-                let args = &[];
-                inf = Inferior::start(cmd, args);
+                let target = String::from("/home/nmavis/dev/rustdbg/tests/elf/hello_world");
+                let targs = &[];
+                inf = Inferior::start(target, targs);
                 //Inferior::breakpoint::set(inf.pid, 0x55555555513d);
                 //debug::resume(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
             }
-            "run" => println!("Implement normal run"),
-            "break" => {
-                println!("Revisit this...");
+            "run" => inf = Inferior::start(debug_target, debug_args),
+            "continue" => inf.resume(),
+            "break" => unimplemented!(),
+            // {
+                // println!("Revisit this...");
                 // let iargs = args.split_ascii_whitespace();
                 // for a in iargs {
                 //     let hexstr = hex::decode(a).expect("Unable to parse hex string.");
@@ -75,7 +81,9 @@ pub fn main() -> io::Result<()> {
                     //debug::breakpoint::set(inf.pid, hex64);
                 // }
                 //debug::breakpoint::set(inf.pid, hexaddr);
-            }
+            // }
+            "registers" => println!("{:#x?}", inf.registers()),
+            "pcode" => unimplemented!(),
             "help" => {
                 println!("rustdbg commands:\n");
                 for &(cmd, help) in RDBG_COMMANDS {

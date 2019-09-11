@@ -13,3 +13,4 @@ pub fn disable_aslr() -> () {
         ffi::personality((old | 0x0040000) as i64);
     }
 }
+

@@ -44,6 +44,22 @@ A process debugger written in Rust.
   - [ ] Stack
   - [ ] Source Code
 
+## Things to account for
+
+- [ ] Manage debugee threads
+  - [ ] check for new threads on signal and add to DB
+- [ ] Parse args correctly
+- [ ] Parse settings into directive so UI knows about it. 
+- [x] Good practice to flush stdio  prior to fork.
+
+
+## vfork 
+
+- [ ] Retain a copy of env varaibles since the child will replace the value of environ. If we arevforked, we have to restore it.
+
+## Random features
+
+- [ ] Allow user to select `cwd` before fork.
 
 # Execution Flow
 
