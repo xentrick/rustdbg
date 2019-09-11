@@ -209,13 +209,13 @@ impl<'a> Inferior {
     pub fn start(file: String, args: &[String]) -> Inferior {
         println!("Executing: {}", file);
 
-        let inf: Inferior;
+        let mut inf = Inferior::default();
 
         match fork() {
             Ok(ForkResult::Child) => return Inferior::attach_self(file, args),
             Ok(ForkResult::Parent { child }) => {
                 inf.pid = child;
-                return Inferior::wait()
+                return inf.wait()
             }
             Err(e) => panic!("Fork failed: {}", e),
         }
@@ -279,12 +279,12 @@ impl<'a> Inferior {
         }
     }
 
-    pub fn r#continue(&mut self) {
+    pub fn resume(&mut self) {
         println!("Continuing execution...");
         ptrace::cont(self.pid, None)
             .ok()
             .expect("Failed to continue process execution.");
-        Inferior::wait()
+        self.wait();
     }
 
 }

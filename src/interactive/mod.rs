@@ -56,7 +56,7 @@ pub fn main() -> io::Result<()> {
                 let args = &[];
                 inf = Inferior::start(cmd, args);
                 //Inferior::breakpoint::set(inf.pid, 0x55555555513d);
-                //debug::continue_exec(inf);
+                //debug::resume(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
             }
             "run" => println!("Implement normal run"),
