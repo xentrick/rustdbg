@@ -43,7 +43,7 @@ pub fn main() -> io::Result<()> {
         }
     }
 
-    let mut inf: Inferior = Inferior::default();
+    let mut inf = Inferior::new();
 
     while let ReadResult::Input(line) = interface.read_line()? {
         if !line.trim().is_empty() {
@@ -56,14 +56,12 @@ pub fn main() -> io::Result<()> {
 
         match cmd {
             "test" => {
-                let target = String::from("/home/nmavis/dev/rustdbg/tests/elf/hello_world");
-                let targs = &[];
-                inf = Inferior::start(target, targs);
+                inf.start(debug_target, debug_args);
                 //Inferior::breakpoint::set(inf.pid, 0x55555555513d);
                 //debug::resume(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
             }
-            "run" => inf = Inferior::start(debug_target, debug_args),
+            "run" => inf.start(debug_target, debug_args),
             "continue" => inf.resume(),
             "break" => unimplemented!(),
             // {

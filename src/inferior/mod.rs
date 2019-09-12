@@ -85,6 +85,7 @@ pub enum InferiorState {
     Zombie,
     Dead,
     Raised,  /* Traps (Ex: Single step) */
+    None,
 }
 
 /// Structure to represent breakpoints
@@ -198,7 +199,7 @@ impl Default for Inferior {
             env: HashMap::new(),
             cwd: PathBuf::new(),
 
-            state: InferiorState::Startup,
+            state: InferiorState::None,
             aslr: true,  // Get System Information for this...
 
             breakpoints: HashMap::new(),
@@ -228,39 +229,43 @@ impl Default for Inferior {
 /* Inferior Implementation */
 impl Inferior {
 
+    // Initialize default Inferior
+    pub fn new() -> Self {
+        Inferior { ..Inferior::default() }
+    }
+
     /* Start new process */
-    pub fn start(file: String, args: &[String]) -> Inferior {
+    pub fn start(&mut self, file: String, args: &[String]) {
         println!("Executing: {}", file);
 
-        let mut _inf = Inferior::default();
+        self.location = file;
+        // self.args: ***FIXME***,
+        self.cwd = getcwd().unwrap();
+        self.state = InferiorState::Startup;
 
         // Flush stdio
         stdio_flush();
 
-        // Base Inferior Information
-        _inf.location = file;
-        //_inf.args = FIXME;
-        _inf.cwd = getcwd().unwrap();
-
         match fork() {
-            Ok(ForkResult::Child) => _inf.attach_self(),
+            Ok(ForkResult::Child) => self.attach_self(),
             Ok(ForkResult::Parent { child }) => {
-                _inf.pid = child;
-                _inf.attached = true;
-                _inf.prefetch_inferior_data();
-                _inf.wait();
+                self.pid = child;
+                self.attached = true;
+                self.prefetch_inferior_data();
+                self.wait();
             }
-            Err(e) => panic!("Fork failed: {}", e),
+            Err(e) => {
+                self.state = InferiorState::Dead;
+                println!("Fork failed: {}", e);
+            }
         }
-
-        _inf
     }
 
 
     /* Attach to a PID */
-    pub fn attach(_pid: u32) -> Inferior {
-        println!("Implement raw attach");
-        Inferior::default()
+    pub fn attach(&mut self, _pid: u32) {
+        unimplemented!();
+        println!("Attaching to pid {}", _pid);
     }
 
     pub fn attach_self(&mut self) {
@@ -299,6 +304,13 @@ impl Inferior {
     pub fn wait(&mut self) {
         /* Call waitpid to get a status */
         loop {
+
+            // Check if it's requested that we exit
+            if EXIT_REQUESTED.load(Ordering::SeqCst) {
+                // Exit out of the run loop
+                break;
+            }
+
             match waitpid(self.pid, None) {
                 Ok(WaitStatus::Stopped(pid, signal::SIGTRAP)) => {
                     println!("Process STOP encountered.");

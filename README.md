@@ -25,7 +25,7 @@ A process debugger written in Rust.
 - starting a process
 - breakpoints
 - conditions
-- Inferior Process structure for knowledgea bout the process
+- Inferior Process structure for knowledge about the process
 - general cmd line debug functions
 
 ## To Implement
@@ -46,11 +46,16 @@ A process debugger written in Rust.
 
 ## Things to account for
 
+- [ ] Carry error code in `InferiorState` (fat enum)
 - [ ] Manage debugee threads
   - [ ] check for new threads on signal and add to DB
 - [ ] Parse args correctly
-- [ ] Parse settings into directive so UI knows about it. 
+- [ ] Parse settings into linefeed directive so UI knows about it. 
 - [x] Good practice to flush stdio  prior to fork.
+
+## Needs Testing
+
+- [ ] Ctrl+c to break out of `wait`
 
 
 ## vfork 
