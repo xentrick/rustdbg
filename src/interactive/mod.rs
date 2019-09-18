@@ -12,9 +12,9 @@ use std::sync::Arc;
 //use std::u64;
 use ansi_term::Color;
 
-use self::commands::*;
-use self::completer::DbgCompleter;
-use inferior::Inferior;
+use crate::interactive::commands::*;
+use crate::interactive::completer::DbgCompleter;
+use crate::inferior::Inferior;
 
 use std::unimplemented;
 

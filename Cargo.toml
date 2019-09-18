@@ -3,6 +3,7 @@ name = "rustdbg"
 version = "0.0.1"
 authors = ["Nick Mavis <itsnick@gmail.com>"]
 default-run = "rdbg"
+edition = "2018"
 
 [dependencies]
 libc = "0.2.62"

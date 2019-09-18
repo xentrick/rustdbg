@@ -4,7 +4,7 @@ use linefeed::complete::{Completer, Completion};
 use linefeed::terminal::Terminal;
 use linefeed::Prompter;
 
-use interactive::commands::RDBG_COMMANDS;
+use crate::interactive::commands::RDBG_COMMANDS;
 
 
 pub struct DbgCompleter;

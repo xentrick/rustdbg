@@ -11,6 +11,8 @@ use libc::user_regs_struct;
 use nix::errno::Errno::*;
 use nix::Error;
 use nix::Error::Sys;
+use nix::sys::mman::*;
+use nix::sys::uio::{ IoVec, RemoteIoVec, process_vm_readv, process_vm_writev};
 use nix::sys::{ptrace, signal};
 use nix::sys::wait::*;
 use nix::ucontext::UContext;
@@ -35,7 +37,7 @@ use std::io::stdout;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicU8, AtomicPtr, Ordering};
 use std::time::{Duration, Instant};
 use std::unimplemented;
 
@@ -46,7 +48,7 @@ static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 /// Function invoked on module loads
 /// (debugger, module filename, module base)
-//type ModloadFunc = Box<dyn Fn(&mut Inferior, &str, usize)>;
+type ModLoadFn = Box<dyn Fn(&mut Inferior, &str, usize)>;
 
 /// Function invoked on debug events
 //type DebugEventFunc = Box<dyn Fn(&mut Inferior, &DEBUG_EVENT)>;
@@ -137,8 +139,7 @@ pub struct Inferior {
     /* Process State */
     state: InferiorState,
     aslr: bool,
-
-    //pub mem: MemoryMap,
+    // mem: MemoryMap,
 
     /* Breakpoints */
     breakpoints: HashMap<usize, Breakpoint>,
@@ -146,7 +147,7 @@ pub struct Inferior {
     breakpoint_bounds: HashMap<String, (usize, usize)>,  // Track minimum and maximum addresses for breakpoints per module
 
     /* Callbacks */
-    // module_load_callbacks: Option<Vec<ModloadFunc>>,  // Invoked when a module is loaded
+    module_load_callbacks: Option<Arc<Vec<ModLoadFn>>>,  // Invoked when a module is loaded
     // debug_event_callbacks: Option<Vec<DebugEventFunc>>,
 
     /// List of all PCs we hit during execution
@@ -207,7 +208,7 @@ impl Default for Inferior {
             breakpoint_bounds: HashMap::new(),
 
             modules: HashSet::new(),
-            // module_load_callbacks: Some(Vec::new()),
+            module_load_callbacks: Some(Arc::new(Vec::with_capacity(25))),
             // debug_event_callbacks: Some(Vec::new()),
 
             single_step: HashMap::new(),
@@ -239,7 +240,7 @@ impl Inferior {
         println!("Executing: {}", file);
 
         self.location = file;
-        // self.args: ***FIXME***,
+        // self.args: ***FIXME***, // Implement this
         self.cwd = getcwd().unwrap();
         self.state = InferiorState::Startup;
 
@@ -261,7 +262,6 @@ impl Inferior {
         }
     }
 
-
     /* Attach to a PID */
     pub fn attach(&mut self, _pid: u32) {
         unimplemented!();
@@ -272,17 +272,6 @@ impl Inferior {
         println!("attach_self");
 
         let cmd = CString::new(self.location.clone()).unwrap();
-
-        // *** Implement args and environment ***
-        //let args: = &[];
-        //let env = &[];
-
-        /* We need to add arg support */
-        //let cargs: &[CString] = args.map(|&a| a as CString);
-        // let mut cargs: &[&CString] = &[];
-        // for a in args {
-        //     cargs.append(CString::new(a.as_bytes()));
-        // }
 
         // *** For now don't deal with ASLR (CHANGE LATER) ***
         ffi::disable_aslr();
@@ -312,33 +301,33 @@ impl Inferior {
             }
 
             match waitpid(self.pid, None) {
-                Ok(WaitStatus::Stopped(pid, signal::SIGTRAP)) => {
+                Ok(WaitStatus::Stopped(_pid, signal::SIGTRAP)) => {
                     println!("Process STOP encountered.");
                     self.state = InferiorState::Running;
                     return
                 },
-                Ok(WaitStatus::PtraceEvent(pid, signal::SIGTRAP, 0)) => {
+                Ok(WaitStatus::PtraceEvent(_pid, signal::SIGTRAP, 0)) => {
                     println!("SIGTRAP encountered.");
                     self.state = InferiorState::Running;
                     return
                 },
-                Ok(WaitStatus::Signaled(pid, sig, core)) => {
-                    println!("Signal: {} Pid: {}", sig, pid);
+                Ok(WaitStatus::Signaled(_pid, sig, core)) => {
+                    println!("Signal: {} Pid: {}", sig, _pid);
                     if core { println!("Process generated core dump!!!!!!"); }
                     unimplemented!();
                 },
-                Ok(WaitStatus::PtraceEvent(pid, sig, event)) => {
-                    println!("Signal: {} Event: {} Pid: {}", sig, event, pid);
+                Ok(WaitStatus::PtraceEvent(_pid, sig, event)) => {
+                    println!("Signal: {} Event: {} Pid: {}", sig, event, _pid);
                     unimplemented!();
                 },
-                Ok(WaitStatus::PtraceSyscall(pid)) => {
+                Ok(WaitStatus::PtraceSyscall(_pid)) => {
                     println!("Process stopped by execution of a system call. `:PTRACDE_O_TRACESYSGOOD` is in effect");
                     unimplemented!();
                 },
-                Ok(WaitStatus::Continued(pid)) => {
+                Ok(WaitStatus::Continued(_pid)) => {
                     println!("Process encountered WaitStatus::Continued.");
                 },
-                Ok(WaitStatus::Exited(pid, code)) => println!("Process exited. Pid: {} Code: {}", pid, code),
+                Ok(WaitStatus::Exited(_pid, code)) => println!("Process exited. Pid: {} Code: {}", _pid, code),
                 Ok(WaitStatus::StillAlive) => continue,
                 Ok(_) => println!("Unhandled event in waitpid. Implement feature."),
                 Err(_) => self.handle_error(),
@@ -347,7 +336,7 @@ impl Inferior {
         }
     }
 
-    pub fn handle_error(&mut self) {
+    pub fn handle_error(&mut self) -> () {
         let e = Error::last();
         println!("{}", e);
         match e {
@@ -364,7 +353,14 @@ impl Inferior {
         self.wait();
     }
 
-    //pub fn set_breakpoint
+    pub fn readv(&self, addr: usize, len: usize) {
+        // Read Chunks using `process_vm_readv` instead of `ptrace`
+        //let mut local: IoVec<&mut [u8]>;
+        let local = IoVec::from_slice(&[len as u8]);
+        let remote = RemoteIoVec{ base: addr, len: len };
+        let result = process_vm_readv(self.pid, IoVec::as_slice(local), &[remote]).unwrap();
+        println!("readv result: {}", result);
+    }
 
     // Fix `func`
     pub fn register_modload_callback(&mut self, func: &str) {
@@ -422,6 +418,9 @@ impl Inferior {
     //pub fn set_bp_print(&mut self, val: bool)    { self.bp_print    = val; }
 
     fn prefetch_inferior_data(&mut self) {
+
+        /* Implement environement data pull here */
+
         // Get TID context data
         self.context = UContext::get().unwrap();
         println!("Context: {:?}", self.context);
@@ -507,7 +506,6 @@ pub fn stdio_flush() {
 
 /* Get elapsed time in seconds */
 fn elapsed_from(start: &Instant) -> f64 {
-    unimplemented!();
     let dur = start.elapsed();
     dur.as_secs() as f64 + dur.subsec_nanos() as f64 / 1_000_000_000.0
 }
