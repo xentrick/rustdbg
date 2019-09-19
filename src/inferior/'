@@ -7,9 +7,6 @@
 #[allow(dead_code)]
 #[allow(unused)]
 
-use ansi_term::Colour::*;
-use colored::*;
-
 //use libc::c_void;
 use libc::user_regs_struct;
 
@@ -29,20 +26,18 @@ use nix::unistd::{
     Pid
 };
 
-use procfs::{ Process, MMapPath };
-
 //use std::cell::RefCell;
 //use std::boxed::FnBox;
 use std::collections::{HashSet, HashMap};
 use std::default::Default;
 use std::ffi::CString;
 //use std::fmt;
+//use std::path::Path;
 //use std::rc::Rc;
 use std::io::stderr;
 use std::io::stdout;
 use std::io::Write;
 use std::path::PathBuf;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicU8, AtomicPtr, Ordering};
 use std::time::{Duration, Instant};
@@ -97,14 +92,6 @@ pub enum InferiorState {
     None,
 }
 
-// #[derive(Clone, Copy)]
-// pub struct MemoryMap {
-//     low: usize,
-//     high: usize,
-//     perms: u8,
-    
-// }
-
 /// Structure to represent breakpoints
 #[derive(Clone)]
 pub struct Breakpoint {
@@ -149,10 +136,9 @@ pub struct Inferior {
     location: String,
     args: HashMap<u32, String>,
     env: HashMap<String, String>,
+    cmdline: PathBuf,
     cwd: PathBuf,
-
-    /* procfs */
-    procfs: Process,
+    exe: PathBuf,
 
     /* Process State */
     state: InferiorState,
@@ -216,9 +202,11 @@ impl Default for Inferior {
             location: String::new(),
             args: HashMap::new(),
             env: HashMap::new(),
-            cwd: getcwd().unwrap(),
 
-            procfs: Process::myself().expect("Unable to get procfs data"),
+            ///    /proc/<pid>/
+            cmdline: PathBuf::new(),
+            cwd: PathBuf::new(),
+            exe: PathBuf::new(),
 
             state: InferiorState::None,
             aslr: true,  // Get System Information for this...
@@ -261,6 +249,7 @@ impl Inferior {
 
         self.location = file;
         // self.args: ***FIXME***, // Implement this
+        self.cwd = getcwd().unwrap();
         self.state = InferiorState::Startup;
 
         // Flush stdio
@@ -376,52 +365,13 @@ impl Inferior {
         ptrace::getregs(self.pid).expect("Failed to fetch register information.")
     }
 
-    pub fn map(&self) {
-        println!("Memory Map:");
-        let maps = self.procfs.maps().expect("Unable to fetch memory map of process");
-        println!("{:<16}{:<16}{:<8}{:<4}  Path", "Start", "End", "Offset", "Perm");
-
-        let _heap = PathBuf::from("[ Heap ]");
-        let _stack = PathBuf::from("[ Stack ]");
-        let _vdso = PathBuf::from("[ vdso ]");
-        let _vvar = PathBuf::from("[ vvar ]");
-        let _vsys = PathBuf::from("[ vsyscall ]");
-        let _anon = PathBuf::from("[ Anonymous ]");
-        let mut _tstack: PathBuf;
-        let mut _other: PathBuf;
-
-        for m in &maps {
-            println!("{:<#16x}{:<#16x}{:<#8x}{:<4}  {:<}",
-                     m.address.0,
-                     m.address.1,
-                     m.offset,
-                     m.perms,
-                     match &m.pathname {
-                         MMapPath::Path(p) => p.display(), 
-                         MMapPath::Heap => _heap.display(),
-                         MMapPath::Stack => _stack.display(),
-                         MMapPath::Vdso => _vdso.display(),
-                         MMapPath::Vvar => _vvar.display(),
-                         MMapPath::Vsyscall => _vsys.display(),
-                         MMapPath::Anonymous => _anon.display(),
-                         MMapPath::TStack(u) => {
-                             _tstack = PathBuf::from(format!("TS: {}", u));
-                             _tstack.display()
-                         },
-                         MMapPath::Other(o) => {
-                             _other = PathBuf::from(format!("Other: {}", o));
-                             _other.display()
-                         },
-                     });
-        }
+    pub fn get_mem_map(&mut self) {
+        println!("Retrieving memory map of inferior.");
+        
     }
 
-    pub fn set_breakpoint(&mut self, bpvec: Vec<&str>) -> Result<(), Error> {
-        unimplemented!();
-    }
-
-    pub fn activate_bp(&mut self) {
-        unimplemented!();
+    pub fn set_breakpoint(&mut self) -> Result<(), Error> {
+        unimplemented!()
     }
 
     // pub fn readv(&self, addr: usize, len: usize) {
@@ -491,9 +441,6 @@ impl Inferior {
         // Get TID context data
         self.context = UContext::get().unwrap();
         println!("Context: {:?}", self.context);
-
-        self.procfs = Process::new(i32::from(self.pid)).expect("Unable to parse procfs data.");
-        println!("procfs: {:?}", self.procfs);
     }
 
     /// Resolves the file name of a given memory mapped file in the target

@@ -2,6 +2,22 @@
 
 A process debugger written in Rust.
 
+# Staying on Track
+
+- [ ] Map out memory so we can create bounds for breakpoints
+  - [ ] Iterator trait for memory map, to make it nice to work with
+  - [ ] Shared/Dynamic Libraries
+  - [ ] How to manage changes in the map or allocations?
+- [ ] Breakpoints
+  - [ ] Set
+  - [ ] Remove
+  - [ ] List
+  - [ ] Conditional
+- [ ] `ready_vm_write/readv` replacement for `ptrace` read/write
+  
+Shared/Dynamic Libraries
+3.  
+
 # Structure Ideas
 
 ## Modules

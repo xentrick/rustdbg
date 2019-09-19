@@ -1,5 +1,9 @@
+#[allow(dead_code)]
+#[allow(unused)]
+
 pub mod commands;
 pub mod completer;
+mod fmt;
 
 use linefeed::{Interface, ReadResult};
 use linefeed::command::COMMANDS;
@@ -50,7 +54,7 @@ pub fn main() -> io::Result<()> {
             interface.add_history_unique(line.clone());
         }
 
-        let (cmd, args) = split_first_word(&line);
+        let (cmd, _args) = split_first_word(&line);
         let debug_target = String::from("/home/nmavis/dev/rustdbg/tests/elf/hello_world");
         let debug_args = &[];
 
@@ -63,24 +67,14 @@ pub fn main() -> io::Result<()> {
             }
             "run" => inf.start(debug_target, debug_args),
             "continue" => inf.resume(),
-            "break" => unimplemented!(),
-            // {
-                // println!("Revisit this...");
-                // let iargs = args.split_ascii_whitespace();
-                // for a in iargs {
-                //     let hexstr = hex::decode(a).expect("Unable to parse hex string.");
-                //     if hexstr.len() > 8 {
-                //         println!("Hex string longer than u64");
-                //         continue
-                //     }
-                //     println!("Arg: {}", a);
-                //     let hex64 = u64::from_be_bytes(hexstr);
-                    //let hex64 = u64::from_be_bytes(hexstr.as_slice());
-                    //debug::breakpoint::set(inf.pid, hex64);
-                // }
-                //debug::breakpoint::set(inf.pid, hexaddr);
-            // }
+            "break" => {
+                let bpaddr = _args.split_whitespace().collect();
+                inf.set_breakpoint(bpaddr);
+            },
             "registers" => println!("{:#x?}", inf.registers()),
+            "memory" => inf.map(),
+            // "files" => inf.files(),
+            // "env" => inf.env(),
             "pcode" => unimplemented!(),
             "help" => {
                 println!("rustdbg commands:\n");
