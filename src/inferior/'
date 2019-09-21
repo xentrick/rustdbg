@@ -11,7 +11,6 @@ use ansi_term::Colour::*;
 use colored::*;
 use chrono::{Utc, TimeZone, NaiveTime, NaiveDateTime, DateTime, Local};
 
-use hex;
 //use libc::c_void;
 use libc::user_regs_struct;
 
@@ -31,7 +30,7 @@ use nix::unistd::{
     Pid
 };
 
-use procfs::{ Process, MemoryMap, MMapPath, ticks_per_second };
+use procfs::{ Process, MMapPath, ticks_per_second };
 
 //use std::cell::RefCell;
 //use std::boxed::FnBox;
@@ -138,33 +137,6 @@ pub struct Breakpoint {
     freq: u64,
 }
 
-#[derive(Clone)]
-pub struct MemoryMapList {
-    //index: usize,
-    map: Vec<MemoryMap>,
-}
-
-impl MemoryMapList {
-    fn new() -> MemoryMapList {
-        // MemoryMapList { index: 0, map: Vec::new() }
-        MemoryMapList { map: Vec::new() }
-    }
-}
-
-// impl Iterator for MemoryMapList {
-//     type Item = MemoryMap;
-
-//     fn next(&mut self) -> Option<MemoryMap> {
-//         if self.index >= self.map.len() {
-//             None
-//         } else {
-//             self.index += 1;
-//             Some(self.map[self.index-1])
-//             // self.map.get(self.index-1)
-//         }
-//     }
-// }
-
 
 #[derive(Clone)]
 pub struct Inferior {
@@ -176,16 +148,17 @@ pub struct Inferior {
     /* Startup data */
     location: String,
     args: HashMap<u32, String>,
-    pub env: HashMap<OsString, OsString>,
+    env: HashMap<OsString, OsString>,
     cwd: PathBuf,
 
     /* procfs */
     procfs: Process,
+    starttime: Option<DateTime<Utc>>,
 
     /* Process State */
     state: InferiorState,
     aslr: bool,
-    mem: MemoryMapList,
+    // mem: MemoryMap,
 
     /* Breakpoints */
     breakpoints: HashMap<usize, Breakpoint>,
@@ -247,7 +220,7 @@ impl Default for Inferior {
             cwd: getcwd().unwrap(),
 
             procfs: Process::myself().expect("Unable to get procfs data"),
-            mem: MemoryMapList::new(),
+            starttime: None,
 
             state: InferiorState::None,
             aslr: true,  // Get System Information for this...
@@ -405,89 +378,48 @@ impl Inferior {
         ptrace::getregs(self.pid).expect("Failed to fetch register information.")
     }
 
-    pub fn show_memory_map(&self) {
+    pub fn map(&self) {
+        println!("Memory Map:");
         let maps = self.procfs.maps().expect("Unable to fetch memory map of process");
-        println!("{:<16}{:<16}{:<12}{:<4}  Path", "Start", "End", "Offset", "Perm");
+        println!("{:<16}{:<16}{:<8}{:<4}  Path", "Start", "End", "Offset", "Perm");
+
+        let _heap = PathBuf::from("[ Heap ]");
+        let _stack = PathBuf::from("[ Stack ]");
+        let _vdso = PathBuf::from("[ vdso ]");
+        let _vvar = PathBuf::from("[ vvar ]");
+        let _vsys = PathBuf::from("[ vsyscall ]");
+        let _anon = PathBuf::from("[ Anonymous ]");
+        let mut _tstack: PathBuf;
+        let mut _other: PathBuf;
 
         for m in &maps {
-            match &m.pathname {
-                MMapPath::Path(p) => {
-                    if m.perms.contains("x") {
-                        println!("{}", format!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                               m.address.0,
-                                               m.address.1,
-                                               m.offset,
-                                               m.perms, p.to_str().unwrap()).red());
-                    } else {
-                        println!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                 m.address.0,
-                                 m.address.1,
-                                 m.offset,
-                                 m.perms, p.to_str().unwrap());
-                    }
-                }
-                MMapPath::Heap => println!("{}", format!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                                         m.address.0,
-                                                         m.address.1,
-                                                         m.offset,
-                                                         m.perms, "[ Heap ]").green()),
-                MMapPath::Stack => println!("{}", format!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                                         m.address.0,
-                                                         m.address.1,
-                                                         m.offset,
-                                                         m.perms, "[ Stack ]").purple()),
-                MMapPath::Vdso => println!("{}", format!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                                          m.address.0,
-                                                          m.address.1,
-                                                          m.offset,
-                                                          m.perms, "[ vdso ]").red()),
-                MMapPath::Vvar => println!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                           m.address.0,
-                                           m.address.1,
-                                           m.offset,
-                                           m.perms, "[ vvar ]"),
-                MMapPath::Vsyscall => println!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                           m.address.0,
-                                           m.address.1,
-                                           m.offset,
-                                           m.perms, "[ vsyscall ]"),
-                MMapPath::Anonymous => println!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                           m.address.0,
-                                           m.address.1,
-                                           m.offset,
-                                           m.perms, "[ Anonymous ]"),
-                MMapPath::TStack(u) => println!("{}", format!("{:<#16x}{:<#16x}{:<#126x}{:<4}  {:<}",
-                                                         m.address.0,
-                                                         m.address.1,
-                                                         m.offset,
-                                                         m.perms, u)),
-                MMapPath::Other(o) => println!("{}", format!("{:<#16x}{:<#16x}{:<#12x}{:<4}  {:<}",
-                                                         m.address.0,
-                                                         m.address.1,
-                                                         m.offset,
-                                                         m.perms, o).red()),
-            };
+            println!("{:<#16x}{:<#16x}{:<#8x}{:<4}  {:<}",
+                     m.address.0,
+                     m.address.1,
+                     m.offset,
+                     m.perms,
+                     match &m.pathname {
+                         MMapPath::Path(p) => p.display(), 
+                         MMapPath::Heap => _heap.display(),
+                         MMapPath::Stack => _stack.display(),
+                         MMapPath::Vdso => _vdso.display(),
+                         MMapPath::Vvar => _vvar.display(),
+                         MMapPath::Vsyscall => _vsys.display(),
+                         MMapPath::Anonymous => _anon.display(),
+                         MMapPath::TStack(u) => {
+                             _tstack = PathBuf::from(format!("TS: {}", u));
+                             _tstack.display()
+                         },
+                         MMapPath::Other(o) => {
+                             _other = PathBuf::from(format!("Other: {}", o));
+                             _other.display()
+                         },
+                     });
         }
     }
 
-    pub fn validate_addr(&mut self, addr: usize) -> Result<MemoryMap, Error> {
-        let map = self.procfs.maps().unwrap()[0].clone();
-        Ok(map)
-    }
-
-    pub fn set_breakpoint(&mut self, bpvec: Vec<&str>) -> Result<(), hex::FromHexError> {
-        // Iter `Vec<&str>` and convert to hex address.
-        let mut hexaddr: Vec<u8> = Vec::new();
-        for a in bpvec {
-            match hex::decode(a) {
-                Ok(v) => hexaddr = v,
-                Err(err) => {
-                    println!("Unable to parse {}. Error: {}", a, err);
-                    ()
-                }
-            }
-        }
-        Ok(())
+    pub fn set_breakpoint(&mut self, bpvec: Vec<&str>) -> Result<(), Error> {
+        unimplemented!();
     }
 
     pub fn activate_bp(&mut self) {
@@ -559,21 +491,28 @@ impl Inferior {
         /* Implement environement data pull here */
 
         // Get TID context data
-        self.update_context();
+        self.context = UContext::get().unwrap();
+        println!("Context: {:?}", self.context);
 
         // Get Process Information
         self.process_procfs()
     }
 
-    fn update_context(&mut self) {
-        self.context = UContext::get().unwrap();
-    }
-
     fn process_procfs(&mut self) {
         self.procfs = Process::new(i32::from(self.pid)).expect("Unable to parse procfs data.");
+        println!("procfs: {:#?}", self.procfs);
 
         // Environment
-        self.env = self.procfs.environ().unwrap();
+        self.env = self.procfs.environ().expect("Unable to parse environment data from process.");
+        println!("Env:\n{:#?}", self.env);
+        // Start Time. Converted from cpu ticks to `DateTime`
+        let ticks = ticks_per_second();
+        let current_epoch = SystemTime::now().duration_since( UNIX_EPOCH ).expect("Unable to get system time.");
+        self.starttime = Some(
+            DateTime::from_utc(NaiveDateTime::from_timestamp(current_epoch - self.procfs.stat.starttime, 0), Utc)
+        );
+        println!("Start Time: {}", self.starttime.unwrap().to_string());
+
     }
 
     /// Resolves the file name of a given memory mapped file in the target

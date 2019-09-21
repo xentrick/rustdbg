@@ -4,19 +4,20 @@ A process debugger written in Rust.
 
 # Staying on Track
 
-- [ ] Map out memory so we can create bounds for breakpoints
+- [x] Map out memory so we can create bounds for breakpoints
   - [ ] Iterator trait for memory map, to make it nice to work with
+    - I can't implement a trait for it?
   - [ ] Shared/Dynamic Libraries
-  - [ ] How to manage changes in the map or allocations?
+  - [ ] How to track changes in the map or allocations?
 - [ ] Breakpoints
   - [ ] Set
   - [ ] Remove
   - [ ] List
   - [ ] Conditional
+  - [ ] Future breakpoints on functions not yet imported (Windbg feature)
 - [ ] `ready_vm_write/readv` replacement for `ptrace` read/write
-  
-Shared/Dynamic Libraries
-3.  
+- [ ] Unicorn Instruction Emulation
+- [ ] TUI Rust Pane for dashboard
 
 # Structure Ideas
 

@@ -3,6 +3,9 @@
 
 pub mod commands;
 pub mod completer;
+pub mod ui;
+pub mod app;
+pub mod util;
 mod fmt;
 
 use linefeed::{Interface, ReadResult};
@@ -65,16 +68,16 @@ pub fn main() -> io::Result<()> {
                 //debug::resume(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
             }
-            "run" => inf.start(debug_target, debug_args),
+            "run" => inf.start(_args.to_string(), debug_args),
             "continue" => inf.resume(),
             "break" => {
                 let bpaddr = _args.split_whitespace().collect();
                 inf.set_breakpoint(bpaddr);
             },
             "registers" => println!("{:#x?}", inf.registers()),
-            "memory" => inf.map(),
+            "memory" => inf.show_memory_map(),
             // "files" => inf.files(),
-            // "env" => inf.env(),
+            "env" => println!("{:#?}", inf.env),
             "pcode" => unimplemented!(),
             "help" => {
                 println!("rustdbg commands:\n");
