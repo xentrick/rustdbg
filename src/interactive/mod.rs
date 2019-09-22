@@ -75,7 +75,7 @@ pub fn context() -> Result<(), failure::Error> {
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
 
-    let mut app = App::new("Termion demo");
+    let mut app = App::new("rustdbg");
     loop {
         ui::draw(&mut terminal, &app)?;
         match events.next()? {
