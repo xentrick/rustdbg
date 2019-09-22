@@ -25,11 +25,29 @@ pub fn draw<B: Backend>(terminal: &mut Terminal<B>, app: &App) -> Result<(), io:
             .select(app.tabs.index)
             .render(&mut f, chunks[0]);
         match app.tabs.index {
-            0 => draw_first_tab(&mut f, &app, chunks[1]),
-            1 => draw_second_tab(&mut f, &app, chunks[1]),
+            0 => inferior_tab(&mut f, &app, chunks[1]),
+            // 1 => draw_second_tab(&mut f, &app, chunks[1]),
             _ => {}
         };
     })
+}
+
+fn inferior_tab<B>(f: &mut Frame<B>, app: &App, area: Rect)
+where B: Backend,
+{
+    let chunks = Layout::default()
+        .constraints(
+            [
+                Constraint::Min(7),
+                Constraint::Length(7),
+                Constraint::Length(7),
+            ]
+                .as_ref(),
+        )
+        .split(area);
+    // draw_gauges(f, app, chunks[0]);
+    draw_charts(f, app, chunks[0]);
+    draw_text(f, chunks[2]);
 }
 
 fn draw_first_tab<B>(f: &mut Frame<B>, app: &App, area: Rect)
@@ -51,35 +69,7 @@ where
     draw_text(f, chunks[2]);
 }
 
-fn draw_gauges<B>(f: &mut Frame<B>, app: &App, area: Rect)
-where
-    B: Backend,
-{
-    let chunks = Layout::default()
-        .constraints([Constraint::Length(2), Constraint::Length(3)].as_ref())
-        .margin(1)
-        .split(area);
-    Block::default()
-        .borders(Borders::ALL)
-        .title("Graphs")
-        .render(f, area);
-    Gauge::default()
-        .block(Block::default().title("Gauge:"))
-        .style(
-            Style::default()
-                .fg(Color::Magenta)
-                .bg(Color::Black)
-                .modifier(Modifier::ITALIC | Modifier::BOLD),
-        )
-        .label(&format!("{} / 100", app.progress))
-        .percent(app.progress)
-        .render(f, chunks[0]);
-    Sparkline::default()
-        .block(Block::default().title("Sparkline:"))
-        .style(Style::default().fg(Color::Green))
-        .data(&app.sparkline.points)
-        .render(f, chunks[1]);
-}
+
 
 fn draw_charts<B>(f: &mut Frame<B>, app: &App, area: Rect)
 where
@@ -286,5 +276,35 @@ where
         })
         .x_bounds([-180.0, 180.0])
         .y_bounds([-90.0, 90.0])
+        .render(f, chunks[1]);
+}
+
+fn draw_gauges<B>(f: &mut Frame<B>, app: &App, area: Rect)
+where
+    B: Backend,
+{
+    let chunks = Layout::default()
+        .constraints([Constraint::Length(2), Constraint::Length(3)].as_ref())
+        .margin(1)
+        .split(area);
+    Block::default()
+        .borders(Borders::ALL)
+        .title("Graphs")
+        .render(f, area);
+    Gauge::default()
+        .block(Block::default().title("Gauge:"))
+        .style(
+            Style::default()
+                .fg(Color::Magenta)
+                .bg(Color::Black)
+                .modifier(Modifier::ITALIC | Modifier::BOLD),
+        )
+        .label(&format!("{} / 100", app.progress))
+        .percent(app.progress)
+        .render(f, chunks[0]);
+    Sparkline::default()
+        .block(Block::default().title("Sparkline:"))
+        .style(Style::default().fg(Color::Green))
+        .data(&app.sparkline.points)
         .render(f, chunks[1]);
 }

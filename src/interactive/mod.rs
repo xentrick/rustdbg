@@ -8,28 +8,110 @@ pub mod app;
 pub mod util;
 mod fmt;
 
+use ansi_term::Color;
 use linefeed::{Interface, ReadResult};
 use linefeed::command::COMMANDS;
 use linefeed::inputrc::parse_text;
 use std::io;
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
+use std::unimplemented;
+use structopt::StructOpt;
+use termion::event::Key;
+use termion::input::MouseTerminal;
+use termion::raw::IntoRawMode;
+use termion::screen::AlternateScreen;
+use tui::backend::TermionBackend;
+use tui::Terminal;
+
 //use std::thread;
 //use std::time::Duration;
 //use std::path::Path;
 //use std::u64;
-use ansi_term::Color;
 
-use crate::interactive::commands::*;
-use crate::interactive::completer::DbgCompleter;
 use crate::inferior::Inferior;
+use self::commands::*;
+use self::completer::DbgCompleter;
+//use self::app::{ui, App};
+//use self::util::event::{Config, Event, Events};
 
-use std::unimplemented;
+use util::event::{Config, Event, Events};
+pub use app::App;
 
 const HISTORY_FILE: &str = ".rdbg_history";
 
+/// Intialize TUI and command line loop to process user input.
+pub fn main() -> io::Result<()> {
+    // Draw Context
+    context();
+    // linefeed command loop
+    cmdloop().expect("Unable to start command loop.");
+    Ok(())
+}
+
+#[derive(Debug, StructOpt)]
+struct Cli {
+    #[structopt(long = "tick-rate", default_value = "250")]
+    tick_rate: u64,
+    #[structopt(long = "log")]
+    log: bool,
+}
+
+
+pub fn context() -> Result<(), failure::Error> {
+    let cli = Cli::from_args();
+    stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
+
+    let events = Events::with_config(Config {
+        tick_rate: Duration::from_millis(cli.tick_rate),
+        ..Config::default()
+    });
+
+    let stdout = io::stdout().into_raw_mode()?;
+    let stdout = MouseTerminal::from(stdout);
+    let stdout = AlternateScreen::from(stdout);
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.hide_cursor()?;
+
+    let mut app = App::new("Termion demo");
+    loop {
+        ui::draw(&mut terminal, &app)?;
+        match events.next()? {
+            Event::Input(key) => match key {
+                Key::Char(c) => {
+                    app.on_key(c);
+                }
+                Key::Up => {
+                    app.on_up();
+                }
+                Key::Down => {
+                    app.on_down();
+                }
+                Key::Left => {
+                    app.on_left();
+                }
+                Key::Right => {
+                    app.on_right();
+                }
+                _ => {}
+            },
+            Event::Tick => {
+                app.on_tick();
+            }
+        }
+        if app.should_quit {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
 // https://github.com/murarth/linefeed/blob/master/examples/demo.rs
 
-pub fn main() -> io::Result<()> {
+pub fn cmdloop() -> io::Result<()> {
     println!("Initializing rustdbg debugger. Written by xentrick");
 
     let interface = Arc::new(Interface::new("rustdbg")?);
@@ -68,7 +150,11 @@ pub fn main() -> io::Result<()> {
                 //debug::resume(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
             }
-            "run" => inf.start(_args.to_string(), debug_args),
+            "run" => {
+                if _args.is_empty() { println!("Please provide a process path to debug"); }
+                else if Path::new(_args).is_file() { inf.start(_args.to_string(), debug_args); }
+                else { println!("Invalid path to inferior."); }
+            }
             "continue" => inf.resume(),
             "break" => {
                 let bpaddr = _args.split_whitespace().collect();

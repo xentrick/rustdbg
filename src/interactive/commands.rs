@@ -13,4 +13,5 @@ pub static RDBG_COMMANDS: &[(&str, &str)] = &[
     ("symbols", "Show symbols for inferior"),
     ("disas", "Disassemble a function"),
     ("pcode", "Show pcode for a function"),
+    ("memory", "Show memory map of inferior"),
 ];
