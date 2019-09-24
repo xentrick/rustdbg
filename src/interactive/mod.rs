@@ -4,7 +4,7 @@
 pub mod commands;
 pub mod completer;
 pub mod ui;
-pub mod app;
+pub mod context;
 pub mod util;
 mod fmt;
 
@@ -12,6 +12,7 @@ use ansi_term::Color;
 use linefeed::{Interface, ReadResult};
 use linefeed::command::COMMANDS;
 use linefeed::inputrc::parse_text;
+use linefeed::terminal::DefaultTerminal;
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
@@ -37,14 +38,12 @@ use self::completer::DbgCompleter;
 //use self::util::event::{Config, Event, Events};
 
 use util::event::{Config, Event, Events};
-pub use app::App;
+pub use context::Context;
 
 const HISTORY_FILE: &str = ".rdbg_history";
 
 /// Intialize TUI and command line loop to process user input.
 pub fn main() -> io::Result<()> {
-    // Draw Context
-    context();
     // linefeed command loop
     cmdloop().expect("Unable to start command loop.");
     Ok(())
@@ -58,10 +57,10 @@ struct Cli {
     log: bool,
 }
 
-
-pub fn context() -> Result<(), failure::Error> {
+fn context(linefeed: &Arc<Interface<DefaultTerminal>>, inf: &Inferior) -> Result<(), failure::Error> {
     let cli = Cli::from_args();
-    stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
+
+    stderrlog::new().quiet(!cli.log).verbosity(4).init();
 
     let events = Events::with_config(Config {
         tick_rate: Duration::from_millis(cli.tick_rate),
@@ -75,9 +74,9 @@ pub fn context() -> Result<(), failure::Error> {
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
 
-    let mut app = App::new("rustdbg");
+    let mut app = Context::new("rustdbg");
     loop {
-        ui::draw(&mut terminal, &app)?;
+        ui::draw(&mut terminal, &app, &inf, &linefeed)?;
         match events.next()? {
             Event::Input(key) => match key {
                 Key::Char(c) => {
@@ -106,6 +105,7 @@ pub fn context() -> Result<(), failure::Error> {
         }
     }
 
+    terminal.clear();
     Ok(())
 }
 
@@ -132,6 +132,9 @@ pub fn cmdloop() -> io::Result<()> {
         }
     }
 
+    // Context Setup
+    // 
+
     let mut inf = Inferior::new();
 
     while let ReadResult::Input(line) = interface.read_line()? {
@@ -144,12 +147,17 @@ pub fn cmdloop() -> io::Result<()> {
         let debug_args = &[];
 
         match cmd {
+            "context" => {
+                if let Err(e) = context(&interface, &inf) {
+                    println!("Context Error: {}", e);
+                }
+            },
             "test" => {
                 inf.start(debug_target, debug_args);
                 //Inferior::breakpoint::set(inf.pid, 0x55555555513d);
                 //debug::resume(inf);
                 //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
-            }
+            },
             "run" => {
                 if _args.is_empty() { println!("Please provide a process path to debug"); }
                 else if Path::new(_args).is_file() { inf.start(_args.to_string(), debug_args); }

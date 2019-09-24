@@ -65,7 +65,10 @@ impl Events {
             thread::spawn(move || {
                 let tx = tx.clone();
                 loop {
-                    tx.send(Event::Tick).unwrap();
+                    match tx.send(Event::Tick) {
+                        Ok(_) => (),
+                        _ => continue,
+                    }
                     thread::sleep(config.tick_rate);
                 }
             })

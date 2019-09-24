@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::interactive::util::TabsState;
 
 const ASNHEADER: [&'static str; 3] = [ "Address", "Opcode", "Ins" ];
@@ -34,31 +36,39 @@ const INS_VEC: [Ins; 15] = [
     Ins { addr: 0x40000, instruction: "mov eax, [ecx]" },
 ];
 
+
+#[derive(Clone)]
 pub struct Ins<'a> {
     pub addr: usize,
     pub instruction: &'a str,
 }
 
-pub struct InsState {
-    pub items: Vec<Ins>,
+impl<'a> fmt::Debug for Ins<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Addr: {:#x} Instruction: {}", self.addr, self.instruction)
+    }
+}
+
+pub struct InsState<'a> {
+    pub items: Vec<Ins<'a>>,
     pub selected: usize,
 }
 
-impl InsState {
-    fn new(items: Vec) -> InsState {
-        InsState { items, selected: 0 }
-    }
-    fn select_previous(&mut self) {
-        if self.selected > 0 {
-            self.selected -= 1;
-        }
-    }
-    fn select_next(&mut self) {
-        if self.selected < self.items.len() - 1 {
-            self.selected += 1
-        }
-    }
-}
+// impl InsState {
+//     fn new(items: Vec<T>) -> InsState {
+//         InsState { items, selected: 0 }
+//     }
+//     fn select_previous(&mut self) {
+//         if self.selected > 0 {
+//             self.selected -= 1;
+//         }
+//     }
+//     fn select_next(&mut self) {
+//         if self.selected < self.items.len() - 1 {
+//             self.selected += 1
+//         }
+//     }
+// }
 
 pub struct ListState<I> {
     pub items: Vec<I>,
@@ -81,23 +91,24 @@ impl<I> ListState<I> {
     }
 }
 
-pub struct App<'a> {
+pub struct Context<'a> {
     pub title: &'a str,
     pub should_quit: bool,
     pub tabs: TabsState<'a>,
     pub show_src: bool,
-    pub disass: InsState<Ins>,
+    pub disass: ListState<Ins<'a>>,
+    // pub disass: InsState<Ins>,
     // pub disass: Vec<Ins<'a>>,
 }
 
-impl<'a> App<'a> {
-    pub fn new(title: &'a str) -> App<'a> {
-        App {
+impl<'a> Context<'a> {
+    pub fn new(title: &'a str) -> Context<'a> {
+        Context {
             title,
             should_quit: false,
             tabs: TabsState::new(vec!["Process 0", "Process 1"]),
             show_src: true,
-            disass: InsState::new(INSTEST.to_vec()),
+            disass: ListState::new(INS_VEC.iter().cloned().collect()),
             // disass: INS_VEC,
         }
     }
