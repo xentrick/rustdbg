@@ -60,7 +60,7 @@ struct Cli {
 fn context(linefeed: &Arc<Interface<DefaultTerminal>>, inf: &Inferior) -> Result<(), failure::Error> {
     let cli = Cli::from_args();
 
-    stderrlog::new().quiet(!cli.log).verbosity(4).init();
+    stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
 
     let events = Events::with_config(Config {
         tick_rate: Duration::from_millis(cli.tick_rate),
