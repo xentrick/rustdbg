@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::interactive::util::TabsState;
+use crate::interactive::tabs::TabsState;
 
 const ASNHEADER: [&'static str; 3] = [ "Address", "Opcode", "Ins" ];
 

@@ -1,26 +1,10 @@
 pub mod event;
 
-use rand::distributions::{Distribution, Uniform};
-use rand::rngs::ThreadRng;
+pub fn split_first_word(s: &str) -> (&str, &str) {
+    let s = s.trim();
 
-pub struct TabsState<'a> {
-    pub titles: Vec<&'a str>,
-    pub index: usize,
-}
-
-impl<'a> TabsState<'a> {
-    pub fn new(titles: Vec<&'a str>) -> TabsState {
-        TabsState { titles, index: 0 }
-    }
-    pub fn next(&mut self) {
-        self.index = (self.index + 1) % self.titles.len();
-    }
-
-    pub fn previous(&mut self) {
-        if self.index > 0 {
-            self.index -= 1;
-        } else {
-            self.index = self.titles.len() - 1;
-        }
+    match s.find(|ch: char| ch.is_whitespace()) {
+        Some(pos) => (&s[..pos], s[pos..].trim_start()),
+        None => (s, "")
     }
 }
