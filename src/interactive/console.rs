@@ -44,16 +44,16 @@ struct Cli {
     log: bool,
 }
 
-struct ContextView<'a>
+struct ContextView<'a, B: 'a> where B: Backend
 {
     cli: Cli,
     events: Events,
     app: Context<'a>,
-    terminal: Terminal,
+    terminal: Box<Terminal<B>>,
 }
 
-impl<'a> ContextView<'a> {
-    fn new() -> Result<ContextView<'a>, failure::Error> {
+impl<'a, B> ContextView<'a, B> where B: Backend {
+    fn new() -> Result<ContextView<'a, B>, failure::Error> {
         let cli = Cli::from_args();
 
         stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
@@ -75,12 +75,12 @@ impl<'a> ContextView<'a> {
         Ok(ContextView {
             cli: cli,
             events: events,
-            terminal: terminal,
+            terminal: Box::new(terminal),
             app: app,
         })
     }
 
-    fn show(&mut self, menu: &Menu) -> Result<(), failure::Error> {
+    fn show(&mut self, menu: &Menu<'a, B>) -> Result<(), failure::Error> {
         loop {
             //ui::draw(&mut self.terminal, &self.app, &self.inf, &self.linefeed)?;
             ui::draw(&mut self.terminal, &self.app, &menu.inferior, &menu.linefeed)?;
@@ -169,16 +169,16 @@ fn oldcontextfn(linefeed: &Arc<Interface<DefaultTerminal>>, inf: &Inferior) -> R
     Ok(())
 }
 
-pub struct Menu<'a> {
+pub struct Menu<'a, B> where B: Backend {
     linefeed: Arc<Interface<DefaultTerminal>>,
-    context: ContextView<'a>,
+    context: ContextView<'a, B>,
     inferior: Inferior,
 }
 
 
-impl<'a> Menu<'a> {
+impl<'a, B> Menu<'a, B> where B: Backend {
     // Create `Menu` object. Implement as Result for errors
-    pub fn new() -> Result<Menu<'a>, failure::Error> {
+    pub fn new() -> Result<Menu<'a, B>, failure::Error> {
         // Initialize thread safe `Interface`
         let interface = Arc::new(Interface::new("rustdbg")?);
         interface.set_completer(Arc::new(DbgCompleter));
