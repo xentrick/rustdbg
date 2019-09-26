@@ -49,7 +49,7 @@ struct ContextView<'a, B: 'a> where B: Backend
     cli: Cli,
     events: Events,
     app: Context<'a>,
-    terminal: Box<Terminal<B>>,
+    terminal: Terminal<B>,
 }
 
 impl<'a, B> ContextView<'a, B> where B: Backend {
@@ -67,7 +67,7 @@ impl<'a, B> ContextView<'a, B> where B: Backend {
         let stdout = MouseTerminal::from(stdout);
         let stdout = AlternateScreen::from(stdout);
         let backend = TermionBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
+        let mut terminal: Terminal = Terminal::new(backend)?;
         terminal.hide_cursor()?;
 
         let mut app = Context::new("rustdbg");
@@ -75,7 +75,7 @@ impl<'a, B> ContextView<'a, B> where B: Backend {
         Ok(ContextView {
             cli: cli,
             events: events,
-            terminal: Box::new(terminal),
+            terminal: terminal,
             app: app,
         })
     }
