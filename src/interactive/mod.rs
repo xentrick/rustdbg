@@ -12,11 +12,12 @@ use std::io;
 use self::console::Menu;
 
 // Create the rustdbg interface on startup
-pub fn main() -> io::Result<()> {
+pub fn main() -> Result<(), failure::Error> {
     // Intialize fresh rustdbg interface
-    let menu = Menu::new().expect("Unable to initialize rustdbg interface.");
+    // let rdbg = Menu::new().unwrap().expect("Unable to initialize rustdbg interface.");
+    let rdbg = Menu::new().unwrap();
     // Start command loop to get user input.
-    menu.cmdloop().expect("Unable to start command loop.");
+    rdbg.cmdloop();
     Ok(())
 }
 

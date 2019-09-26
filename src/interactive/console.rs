@@ -44,18 +44,16 @@ struct Cli {
     log: bool,
 }
 
-#[derive(Clone, Copy)]
-struct ContextView<'a, B>
-    where B: Backend
+struct ContextView<'a>
 {
     cli: Cli,
     events: Events,
     app: Context<'a>,
-    terminal: Terminal<B>,
+    terminal: Terminal,
 }
 
-impl<'a, B> ContextView<'a, B> {
-    fn new() -> ContextView<'a, B> {
+impl<'a> ContextView<'a> {
+    fn new() -> Result<ContextView<'a>, failure::Error> {
         let cli = Cli::from_args();
 
         stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
@@ -74,22 +72,22 @@ impl<'a, B> ContextView<'a, B> {
 
         let mut app = Context::new("rustdbg");
 
-        ContextView {
+        Ok(ContextView {
             cli: cli,
             events: events,
             terminal: terminal,
             app: app,
-        }
+        })
     }
 
-    fn show(&mut self) -> Result<(), failure::Error> {
+    fn show(&mut self, menu: &Menu) -> Result<(), failure::Error> {
         loop {
             //ui::draw(&mut self.terminal, &self.app, &self.inf, &self.linefeed)?;
-            ui::draw(&mut self.terminal, &self.app, &self.inf, &self.linefeed)?;
+            ui::draw(&mut self.terminal, &self.app, &menu.inferior, &menu.linefeed)?;
             match self.events.next()? {
                 Event::Input(key) => match key {
                     Key::Char(c) => {
-                        self.context.on_key(c);
+                        self.app.on_key(c);
                     }
                     Key::Up => {
                         self.app.on_up();
@@ -171,16 +169,16 @@ fn oldcontextfn(linefeed: &Arc<Interface<DefaultTerminal>>, inf: &Inferior) -> R
     Ok(())
 }
 
-
 pub struct Menu<'a> {
-    linefeed: Interface<DefaultTerminal>,
+    linefeed: Arc<Interface<DefaultTerminal>>,
     context: ContextView<'a>,
     inferior: Inferior,
 }
 
+
 impl<'a> Menu<'a> {
     // Create `Menu` object. Implement as Result for errors
-    fn new() -> Menu<'a> {
+    pub fn new() -> Result<Menu<'a>, failure::Error> {
         // Initialize thread safe `Interface`
         let interface = Arc::new(Interface::new("rustdbg")?);
         interface.set_completer(Arc::new(DbgCompleter));
@@ -190,14 +188,13 @@ impl<'a> Menu<'a> {
                                       prefix=Color::Green.bold().prefix(),
                                       text="rdbg> ",
                                       suffix=Color::Green.bold().suffix()))?;
-        // Load History
-        interface.load_history();
-
-        // Return `Menu`
-        Menu { linefeed: interface, context: Arc::new(Context::new()), inferior: Arc::new(Inferior::new()) }
+        let rdbg = Menu { linefeed: interface, context: ContextView::new()?, inferior: Inferior::new() };
+        // Load History and return `Menu` structure
+        rdbg.load_history();
+        Ok(rdbg)
     }
 
-    fn load_history(&mut self) -> Result<(), io::ErrorKind> {
+    pub fn load_history(&mut self) {
         if let Err(e) = self.linefeed.load_history(HISTORY_FILE) {
             if e.kind() == io::ErrorKind::NotFound {
                 println!("History file {} doesn't exist, not loading history.", HISTORY_FILE);
@@ -208,10 +205,10 @@ impl<'a> Menu<'a> {
     }
 
     // https://github.com/murarth/linefeed/blob/master/examples/demo.rs
-    fn cmdloop(&mut self) -> io::Result<()> {
-        while let ReadResult::Input(line) = self.interface.read_line()? {
+    pub fn cmdloop(&mut self) -> Result<(), failure::Error> {
+        while let ReadResult::Input(line) = self.linefeed.read_line()? {
             if !line.trim().is_empty() {
-                self.interface.add_history_unique(line.clone());
+                self.linefeed.add_history_unique(line.clone());
             }
 
             let (cmd, _args) = split_first_word(&line);
@@ -220,7 +217,7 @@ impl<'a> Menu<'a> {
 
             match cmd {
                 "context" => {
-                    if let Err(e) = self.context(&self.interface, &self.inf) {
+                    if let Err(e) = self.context.show(&self.linefeed, &self.inferior) {
                         println!("Context Error: {}", e);
                     }
                 },
@@ -232,13 +229,13 @@ impl<'a> Menu<'a> {
                 },
                 "run" => {
                     if _args.is_empty() { println!("Please provide a process path to debug"); }
-                    else if Path::new(_args).is_file() { self.inf.start(_args.to_string(), debug_args); }
+                    else if Path::new(_args).is_file() { self.inferior.start(_args.into(), debug_args); }
                     else { println!("Invalid path to inferior."); }
                 }
-                "continue" => self.inf.resume(),
+                "continue" => self.inferior.resume(),
                 "break" => {
                     let bpaddr = _args.split_whitespace().collect();
-                    self.inf.set_breakpoint(bpaddr);
+                    self.inferior.set_breakpoint(bpaddr);
                 },
                 "registers" => println!("{:#x?}", self.inferior.registers()),
                 "memory" => self.inferior.show_memory_map(),
@@ -258,19 +255,19 @@ impl<'a> Menu<'a> {
                     }
                 }
                 "list-variables" => {
-                    for (name, var) in self.interface.lock_reader().variables() {
+                    for (name, var) in self.linefeed.lock_reader().variables() {
                         println!("{:30} = {}", name, var);
                     }
                 }
                 "history" => {
-                    let w = self.interface.lock_writer_erase()?;
+                    let w = self.linefeed.lock_writer_erase()?;
 
                     for (i, entry) in w.history().enumerate() {
                         println!("{}: {}", i, entry);
                     }
                 }
                 "save-history" => {
-                    if let Err(e) = self.interface.save_history(HISTORY_FILE) {
+                    if let Err(e) = self.linefeed.save_history(HISTORY_FILE) {
                         eprintln!("Could not save history file {}: {}", HISTORY_FILE, e);
                     } else {
                         println!("History saved to {}", HISTORY_FILE);
@@ -279,13 +276,13 @@ impl<'a> Menu<'a> {
                 "quit" => break,
                 "set" => {
                     let d = parse_text("<input>", &line);
-                    self.interface.evaluate_directives(d);
+                    self.linefeed.evaluate_directives(d);
                 }
                 _ => println!("read input: {:?}", line)
             }
         }
 
-        self.interface.save_history(HISTORY_FILE)?;
+        self.linefeed.save_history(HISTORY_FILE)?;
         println!("Goodbye.");
 
         Ok(())
