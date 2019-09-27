@@ -1,5 +1,4 @@
-use rand::distributions::{Distribution, Uniform};
-use rand::rngs::ThreadRng;
+// Tab State for context view
 
 pub struct TabsState<'a> {
     pub titles: Vec<&'a str>,

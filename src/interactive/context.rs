@@ -2,21 +2,7 @@ use std::fmt;
 
 use crate::interactive::tabs::TabsState;
 
-const ASNHEADER: [&'static str; 3] = [ "Address", "Opcode", "Ins" ];
-
-
-const INSTEST: [(usize, &'static str); 10] = [
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-    ( 0x40000, "mov eax, [ecx]" ),
-];
+//const ASNHEADER: [&'static str; 3] = [ "Address", "Opcode", "Ins" ];
 
 const INS_VEC: [Ins; 15] = [
     Ins { addr: 0x40000, instruction: "mov eax, [ecx]" },
@@ -139,6 +125,6 @@ impl<'a> Context<'a> {
     }
 
     pub fn on_tick(&mut self) {
-        let tick = 0;
+        let _tick = 0;
     }
 }

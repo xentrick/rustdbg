@@ -4,7 +4,7 @@ use linefeed::command::COMMANDS;
 use linefeed::inputrc::parse_text;
 use linefeed::terminal::DefaultTerminal;
 use std::io;
-use std::io::StdoutLock;
+//use std::io::{ stdout, Stdout, StdoutLock };
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,16 +14,16 @@ use termion::event::Key;
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
-use tui::backend::{Backend, TermionBackend};
-use tui::terminal::Terminal;
-//use tui::Terminal;
+use tui::backend::TermionBackend;
+// use tui::backend::{CrosstermBackend};
+use tui::Terminal;
 
 //use std::thread;
 //use std::time::Duration;
 //use std::path::Path;
 //use std::u64;
 
-use crate::inferior::Inferior;
+use crate::inferior::{ Inferior, InferiorState };
 use crate::interactive::context::Context;
 use crate::interactive::commands::*;
 use crate::interactive::completer::DbgCompleter;
@@ -44,143 +44,32 @@ struct Cli {
     log: bool,
 }
 
-struct ContextView<'a, B: 'a> where B: Backend
-{
-    cli: Cli,
-    events: Events,
-    app: Context<'a>,
-    terminal: Terminal<B>,
+pub struct Menu<'a> {
+    // Inferior Process
+    pub inferior: Inferior,
+
+    // Linefeed User Input
+    pub linefeed: Arc<Interface<DefaultTerminal>>,
+
+    // TUI for Inferior Context
+    //cli: Cli,
+    //events: Events,
+    pub app: Context<'a>,
+    // terminal: Terminal<B>,
+    // terminal: Terminal<TermionBackend<RawTerminal<Stdout>>>,
+    //terminal: Terminal<TermionBackend<AlternateScreen<MouseTerminal<RawTerminal<Stdout>>>>>,
 }
 
-impl<'a, B> ContextView<'a, B> where B: Backend {
-    fn new() -> Result<ContextView<'a, B>, failure::Error> {
-        let cli = Cli::from_args();
-
-        stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
-
-        let events = Events::with_config(Config {
-            tick_rate: Duration::from_millis(cli.tick_rate),
-            ..Config::default()
-        });
-
-        let stdout = io::stdout().into_raw_mode()?;
-        let stdout = MouseTerminal::from(stdout);
-        let stdout = AlternateScreen::from(stdout);
-        let backend = TermionBackend::new(stdout);
-        let mut terminal: Terminal = Terminal::new(backend)?;
-        terminal.hide_cursor()?;
-
-        let mut app = Context::new("rustdbg");
-
-        Ok(ContextView {
-            cli: cli,
-            events: events,
-            terminal: terminal,
-            app: app,
-        })
-    }
-
-    fn show(&mut self, menu: &Menu<'a, B>) -> Result<(), failure::Error> {
-        loop {
-            //ui::draw(&mut self.terminal, &self.app, &self.inf, &self.linefeed)?;
-            ui::draw(&mut self.terminal, &self.app, &menu.inferior, &menu.linefeed)?;
-            match self.events.next()? {
-                Event::Input(key) => match key {
-                    Key::Char(c) => {
-                        self.app.on_key(c);
-                    }
-                    Key::Up => {
-                        self.app.on_up();
-                    }
-                    Key::Down => {
-                        self.app.on_down();
-                    }
-                    Key::Left => {
-                        self.app.on_left();
-                    }
-                    Key::Right => {
-                        self.app.on_right();
-                    }
-                    _ => {}
-                },
-                Event::Tick => {
-                    self.app.on_tick();
-                }
-            }
-            if self.app.should_quit {
-                break;
-            }
-        }
-
-        self.terminal.clear();
-        Ok(())
-    }
-}
-
-fn oldcontextfn(linefeed: &Arc<Interface<DefaultTerminal>>, inf: &Inferior) -> Result<(), failure::Error> {
-    let cli = Cli::from_args();
-
-    stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
-
-    let events = Events::with_config(Config {
-        tick_rate: Duration::from_millis(cli.tick_rate),
-        ..Config::default()
-    });
-
-    let stdout = io::stdout().into_raw_mode()?;
-    let stdout = MouseTerminal::from(stdout);
-    let stdout = AlternateScreen::from(stdout);
-    let backend = TermionBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-    terminal.hide_cursor()?;
-
-    let mut app = Context::new("rustdbg");
-    loop {
-        ui::draw(&mut terminal, &app, &inf, &linefeed)?;
-        match events.next()? {
-            Event::Input(key) => match key {
-                Key::Char(c) => {
-                    app.on_key(c);
-                }
-                Key::Up => {
-                    app.on_up();
-                }
-                Key::Down => {
-                    app.on_down();
-                }
-                Key::Left => {
-                    app.on_left();
-                }
-                Key::Right => {
-                    app.on_right();
-                }
-                _ => {}
-            },
-            Event::Tick => {
-                app.on_tick();
-            }
-        }
-        if app.should_quit {
-            break;
-        }
-    }
-
-    terminal.clear();
-    Ok(())
-}
-
-pub struct Menu<'a, B> where B: Backend {
-    linefeed: Arc<Interface<DefaultTerminal>>,
-    context: ContextView<'a, B>,
-    inferior: Inferior,
-}
-
-
-impl<'a, B> Menu<'a, B> where B: Backend {
+impl<'a> Menu<'a> {
     // Create `Menu` object. Implement as Result for errors
-    pub fn new() -> Result<Menu<'a, B>, failure::Error> {
+    pub fn new() -> Result<Self, failure::Error> {
+
+
+        let app = Context::new("context");
+
         // Initialize thread safe `Interface`
         let interface = Arc::new(Interface::new("rustdbg")?);
+        //let interface = Interface::with_term("rustdbg", terminal)?;
         interface.set_completer(Arc::new(DbgCompleter));
 
         // Set prompt
@@ -188,7 +77,15 @@ impl<'a, B> Menu<'a, B> where B: Backend {
                                       prefix=Color::Green.bold().prefix(),
                                       text="rdbg> ",
                                       suffix=Color::Green.bold().suffix()))?;
-        let rdbg = Menu { linefeed: interface, context: ContextView::new()?, inferior: Inferior::new() };
+
+
+        let mut rdbg = Menu { inferior: Inferior::new(),
+                          linefeed: interface,
+                          app: app,
+                          // cli: Cli::from_args(),
+                          // events: events,
+                          // terminal: terminal
+        };
         // Load History and return `Menu` structure
         rdbg.load_history();
         Ok(rdbg)
@@ -216,26 +113,27 @@ impl<'a, B> Menu<'a, B> where B: Backend {
             let debug_args = &[];
 
             match cmd {
-                "context" => {
-                    if let Err(e) = self.context.show(&self.linefeed, &self.inferior) {
-                        println!("Context Error: {}", e);
-                    }
-                },
+                // InferiorState::None||Startup
                 "test" => {
-                    self.inferior.start(debug_target, debug_args);
+                    if self.inferior.state == InferiorState::None { self.inferior.start(debug_target, debug_args); }
                     //Inferior::breakpoint::set(inf.pid, 0x55555555513d);
-                    //debug::resume(inf);
-                    //debug::start(Path::new("/home/nmavis/dev/rustdbg/tests/rust/target/debug/hello_world"), &[]);
                 },
                 "run" => {
                     if _args.is_empty() { println!("Please provide a process path to debug"); }
                     else if Path::new(_args).is_file() { self.inferior.start(_args.into(), debug_args); }
                     else { println!("Invalid path to inferior."); }
-                }
-                "continue" => self.inferior.resume(),
+                },
+                "context" => {
+                    if self.inferior.state == InferiorState::Stopped {
+                        if let Err(e) = self.show_context() {
+                            println!("Context Error: {}", e);
+                        }
+                    } else { println!("No inferior found...") }
+                },
+                "continue" => if self.inferior.state == InferiorState::Stopped { self.inferior.resume() },
                 "break" => {
                     let bpaddr = _args.split_whitespace().collect();
-                    self.inferior.set_breakpoint(bpaddr);
+                    self.inferior.set_breakpoint(bpaddr)?;
                 },
                 "registers" => println!("{:#x?}", self.inferior.registers()),
                 "memory" => self.inferior.show_memory_map(),
@@ -248,37 +146,37 @@ impl<'a, B> Menu<'a, B> where B: Backend {
                         println!("  {:15} - {}", cmd, help);
                     }
                     println!();
-                }
-            "list-commands" => {
+                },
+                "list-commands" => {
                     for cmd in COMMANDS {
                         println!("{}", cmd);
                     }
-                }
+                },
                 "list-variables" => {
                     for (name, var) in self.linefeed.lock_reader().variables() {
                         println!("{:30} = {}", name, var);
                     }
-                }
+                },
                 "history" => {
                     let w = self.linefeed.lock_writer_erase()?;
 
                     for (i, entry) in w.history().enumerate() {
                         println!("{}: {}", i, entry);
                     }
-                }
+                },
                 "save-history" => {
                     if let Err(e) = self.linefeed.save_history(HISTORY_FILE) {
                         eprintln!("Could not save history file {}: {}", HISTORY_FILE, e);
                     } else {
                         println!("History saved to {}", HISTORY_FILE);
                     }
-                }
+                },
                 "quit" => break,
                 "set" => {
                     let d = parse_text("<input>", &line);
                     self.linefeed.evaluate_directives(d);
-                }
-                _ => println!("read input: {:?}", line)
+                },
+                _ => continue,
             }
         }
 
@@ -287,6 +185,56 @@ impl<'a, B> Menu<'a, B> where B: Backend {
 
         Ok(())
     }
-}
 
+    fn show_context(&mut self) -> Result<(), failure::Error> {
+        let cli = Cli::from_args();
+
+        stderrlog::new().quiet(!cli.log).verbosity(4).init()?;
+
+        let events = Events::with_config(Config {
+            tick_rate: Duration::from_millis(cli.tick_rate),
+            ..Config::default()
+        });
+
+        let stdout = io::stdout().into_raw_mode()?;
+        let stdout = MouseTerminal::from(stdout);
+        let stdout = AlternateScreen::from(stdout);
+        let backend = TermionBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.hide_cursor()?;
+
+        loop {
+            ui::draw(&mut terminal, &self)?;
+            match events.next()? {
+                Event::Input(key) => match key {
+                    Key::Char(c) => {
+                        self.app.on_key(c);
+                    }
+                    Key::Up => {
+                        self.app.on_up();
+                    }
+                    Key::Down => {
+                        self.app.on_down();
+                    }
+                    Key::Left => {
+                        self.app.on_left();
+                    }
+                    Key::Right => {
+                        self.app.on_right();
+                    }
+                    _ => {}
+                },
+                Event::Tick => {
+                    self.app.on_tick();
+                }
+            }
+            if self.app.should_quit {
+                break;
+            }
+        }
+
+        terminal.clear()?;
+        Ok(())
+    }
+}
 

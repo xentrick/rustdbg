@@ -9,7 +9,9 @@
 
 use ansi_term::Colour::*;
 use colored::*;
-use chrono::{Utc, TimeZone, NaiveTime, NaiveDateTime, DateTime, Local};
+//use chrono::{Utc, TimeZone, NaiveTime, NaiveDateTime, DateTime, Local};
+
+use elfkit::Elf;
 
 use hex;
 //use libc::c_void;
@@ -18,8 +20,8 @@ use libc::user_regs_struct;
 use nix::errno::Errno::*;
 use nix::Error;
 use nix::Error::Sys;
-use nix::sys::mman::*;
-use nix::sys::uio::{IoVec, RemoteIoVec, process_vm_readv, process_vm_writev};
+//use nix::sys::mman::*;
+//use nix::sys::uio::{IoVec, RemoteIoVec, process_vm_readv, process_vm_writev};
 use nix::sys::{ptrace, signal};
 use nix::sys::wait::*;
 use nix::ucontext::UContext;
@@ -31,23 +33,25 @@ use nix::unistd::{
     Pid
 };
 
-use procfs::{ Process, MemoryMap, MMapPath, ticks_per_second };
+use procfs::{ Process, MemoryMap, MMapPath };
 
 //use std::cell::RefCell;
 //use std::boxed::FnBox;
 use std::collections::{HashSet, HashMap};
 use std::default::Default;
 use std::ffi::{ CString, OsString };
+//use std::fs::File;
 //use std::fmt;
 //use std::rc::Rc;
 use std::io::stderr;
 use std::io::stdout;
+//use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
-use std::path::Path;
+//use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicU8, AtomicPtr, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 use std::unimplemented;
 
 pub mod ffi;
@@ -69,8 +73,8 @@ type ModLoadFn = Box<dyn Fn(&mut Inferior, &str, usize)>;
 type BreakpointCallback = fn(&mut Inferior, u32, usize, u64) -> bool;
 
 /// Ctrl+C handler so we can remove breakpoints and detach from the debugger
+#[allow(dead_code)]
 unsafe extern "system" fn ctrl_c_handler(_ctrl_type: u32) -> i32 {
-    unimplemented!();
     // Store that an exit was requested
     EXIT_REQUESTED.store(true, Ordering::SeqCst);
 
@@ -144,6 +148,7 @@ pub struct MemoryMapList {
     map: Vec<MemoryMap>,
 }
 
+#[allow(dead_code)]
 impl MemoryMapList {
     fn new() -> MemoryMapList {
         // MemoryMapList { index: 0, map: Vec::new() }
@@ -165,27 +170,27 @@ impl MemoryMapList {
 //     }
 // }
 
-
-#[derive(Clone)]
+#[allow(dead_code)]
 pub struct Inferior {
     /* Process Information */
-    pid: Pid,
-    tids: HashMap<u32, Pid>,  // Threads
-    attached: bool,
+    pub pid: Pid,
+    pub tids: HashMap<u32, Pid>,  // Threads
+    pub attached: bool,
 
     /* Startup data */
-    location: String,
-    args: HashMap<u32, String>,
+    pub location: String,
+    pub args: HashMap<u32, String>,
     pub env: HashMap<OsString, OsString>,
-    cwd: PathBuf,
+    pub cwd: PathBuf,
 
     /* procfs */
     procfs: Process,
+    parser: Elf,
 
     /* Process State */
-    state: InferiorState,
+    pub state: InferiorState,
     aslr: bool,
-    mem: MemoryMapList,
+    //mem: MemoryMapList,
 
     /* Breakpoints */
     breakpoints: HashMap<usize, Breakpoint>,
@@ -247,7 +252,9 @@ impl Default for Inferior {
             cwd: getcwd().unwrap(),
 
             procfs: Process::myself().expect("Unable to get procfs data"),
-            mem: MemoryMapList::new(),
+            parser: Elf::default(),
+
+            //mem: MemoryMapList::new(),
 
             state: InferiorState::None,
             aslr: true,  // Get System Information for this...
@@ -284,12 +291,20 @@ impl Inferior {
         Inferior { ..Inferior::default() }
     }
 
+    pub fn parse(&mut self) {
+        println!("Parsing binary file: {}", self.location);
+    }
+
     /* Start new process */
     pub fn start(&mut self, file: String, args: &[String]) {
-        println!("Executing: {}", file);
+        if args.len() == 0 { println!("No arguments provided"); }
+        println!("Executing: {} Args: {}", file, args[0]);
 
         self.location = file;
         // self.args: ***FIXME***, // Implement this
+
+        // Parse binary and proceed
+        self.parse();
         self.state = InferiorState::Startup;
 
         // Flush stdio
@@ -311,9 +326,10 @@ impl Inferior {
     }
 
     /* Attach to a PID */
+    #[allow(dead_code)]
     pub fn attach(&mut self, _pid: u32) {
+        // println!("Attaching to pid {}", _pid);
         unimplemented!();
-        println!("Attaching to pid {}", _pid);
     }
 
     pub fn attach_self(&mut self) {
@@ -351,13 +367,13 @@ impl Inferior {
             match waitpid(self.pid, None) {
                 Ok(WaitStatus::Stopped(_pid, signal::SIGTRAP)) => {
                     println!("Process STOP encountered.");
-                    self.state = InferiorState::Running;
-                    return
+                    self.state = InferiorState::Stopped;
+                    break;
                 },
                 Ok(WaitStatus::PtraceEvent(_pid, signal::SIGTRAP, 0)) => {
                     println!("SIGTRAP encountered.");
                     self.state = InferiorState::Running;
-                    return
+                    break;
                 },
                 Ok(WaitStatus::Signaled(_pid, sig, core)) => {
                     println!("Signal: {} Pid: {}", sig, _pid);
@@ -398,6 +414,7 @@ impl Inferior {
         ptrace::cont(self.pid, None)
             .ok()
             .expect("Failed to continue process execution.");
+        self.state = InferiorState::Running;
         self.wait();
     }
 
@@ -470,24 +487,25 @@ impl Inferior {
         }
     }
 
-    pub fn validate_addr(&mut self, addr: usize) -> Result<MemoryMap, Error> {
+    pub fn validate_addr(&mut self, _addr: usize) -> Result<MemoryMap, Error> {
         let map = self.procfs.maps().unwrap()[0].clone();
         Ok(map)
     }
 
-    pub fn set_breakpoint(&mut self, bpvec: Vec<&str>) -> Result<(), hex::FromHexError> {
+    pub fn set_breakpoint(&mut self, _bps: Vec<&str>) -> Result<(), hex::FromHexError> {
+        unimplemented!();
         // Iter `Vec<&str>` and convert to hex address.
-        let mut hexaddr: Vec<u8> = Vec::new();
-        for a in bpvec {
-            match hex::decode(a) {
-                Ok(v) => hexaddr = v,
-                Err(err) => {
-                    println!("Unable to parse {}. Error: {}", a, err);
-                    ()
-                }
-            }
-        }
-        Ok(())
+        // let mut hexaddr: Vec<u8> = Vec::new();
+        // for a in bpvec {
+        //     match hex::decode(a) {
+        //         Ok(v) => hexaddr = v,
+        //         Err(err) => {
+        //             println!("Unable to parse {}. Error: {}", a, err);
+        //             ()
+        //         }
+        //     }
+        // }
+        // Ok(())
     }
 
     pub fn activate_bp(&mut self) {
@@ -504,7 +522,7 @@ impl Inferior {
     // }
 
     // Fix `func`
-    pub fn register_modload_callback(&mut self, func: &str) {
+    pub fn register_modload_callback(&mut self, _func: &str) {
         unimplemented!();
     }
 
@@ -578,13 +596,14 @@ impl Inferior {
 
     /// Resolves the file name of a given memory mapped file in the target
     /// process
-    fn filename_from_module_base(&self, base: usize) -> String {
+    #[allow(dead_code)]
+    fn filename_from_module_base(&self, _base: usize) -> String {
         unimplemented!();
         // Use GetMappedFileNameW() to get the mapped file name
-        let mut buf = [0u16; 4096];
+        // let mut buf = [0u16; 4096];
         // let fnlen = unsafe {
         //     GetMappedFileNameW(self.process_handle(),
-        //                        base as *mut _, buf.as_mut_ptr(), buf.len() as u32)
+        //                        _base as *mut _, buf.as_mut_ptr(), buf.len() as u32)
         // };
         // assert!(fnlen != 0 && (fnlen as usize) < buf.len(),
         //         "GetMappedFileNameW() failed");
@@ -597,23 +616,25 @@ impl Inferior {
         // Path::new(&path).file_name().unwrap().to_str().unwrap().into()
     }
 
-    /// Add the module loaded at `base` in the target process to our module
+    /// Add the module loaded at `_base` in the target process to our module
     /// list
-    fn register_module(&mut self, base: usize) {
-        let filename = self.filename_from_module_base(base);
+    #[allow(dead_code)]
+    fn register_module(&mut self, _base: usize) {
+        let filename = self.filename_from_module_base(_base);
 
         // Insert into the module list
-        self.modules.insert((filename.into(), base));
+        self.modules.insert((filename.into(), _base));
     }
 
-  /// Remove the module loaded at `base` in the target process from our
+  /// Remove the module loaded at `_base` in the target process from our
     /// module list
-    fn unregister_module(&mut self, base: usize) {
+    #[allow(dead_code)]
+    fn unregister_module(&mut self, _base: usize) {
         let mut to_remove = None;
 
         // Find the corresponding module to this base
         for module in self.modules.iter() {
-            if module.1 == base {
+            if module.1 == _base {
                 to_remove = Some(module.clone());
             }
         }
@@ -626,8 +647,8 @@ impl Inferior {
                 // breakpoints are applied
                 let minmax = self.breakpoint_bounds[&to_remove.0];
 
-                let start_addr = base + minmax.0;
-                let end_addr   = base + minmax.1;
+                let start_addr = _base + minmax.0;
+                let end_addr   = _base + minmax.1;
 
                 // Remove any breakpoints which are present in this range
                 self.breakpoints.retain(|&k, _| {
@@ -640,7 +661,7 @@ impl Inferior {
         } else {
             // Got unregister module for unknown DLL
             // Our database is out of sync with reality
-            panic!("Unexpected library unload of base 0x{:x}\n", base);
+            panic!("Unexpected library unload of base 0x{:x}\n", _base);
         }
     }
 
@@ -655,6 +676,7 @@ pub fn stdio_flush() {
 }
 
 /* Get elapsed time in seconds */
+#[allow(dead_code)]
 fn elapsed_from(start: &Instant) -> f64 {
     let dur = start.elapsed();
     dur.as_secs() as f64 + dur.subsec_nanos() as f64 / 1_000_000_000.0

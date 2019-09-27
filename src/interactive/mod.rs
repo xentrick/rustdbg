@@ -7,17 +7,15 @@ pub mod ui;
 pub mod util;
 mod fmt;
 
-use std::io;
-
 use self::console::Menu;
 
 // Create the rustdbg interface on startup
 pub fn main() -> Result<(), failure::Error> {
     // Intialize fresh rustdbg interface
     // let rdbg = Menu::new().unwrap().expect("Unable to initialize rustdbg interface.");
-    let rdbg: Menu<'_, B> = Menu::new().unwrap();
+    let mut rdbg = Box::new(Menu::new().expect("Unable to create menu"));
     // Start command loop to get user input.
-    rdbg.cmdloop();
+    rdbg.cmdloop()?;
     Ok(())
 }
 
